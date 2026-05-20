@@ -4,7 +4,7 @@
 
 ---
 
-I'm Yafei Lee, founder of [OpenClacky](https://github.com/clacky-ai/openclacky), an open-source AI agent written in Ruby. We wanted an agent with skills, memory, sub-agents, browser automation, dynamic model switching, and long-running sessions. Each of those features made prompt caching worse in a different way.
+I'm Yafei Lee, founder of [OpenClacky](https://github.com/clacky-ai/openclacky), an open-source AI Agent written in Ruby. We wanted an agent with skills, memory, sub-agents, browser automation, dynamic model switching, and long-running sessions. Each of those features made prompt caching worse in a different way.
 
 That was the real architecture problem. Not how to call an LLM, not how to add another tool, not how to orchestrate more agents — how to keep the cache prefix stable while the product keeps changing.
 
