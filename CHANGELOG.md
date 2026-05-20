@@ -5,6 +5,27 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.2] - 2026-05-20
+
+### Added
+- Streaming response with real-time token display in WebUI
+- Stream thinking progress indicator during agent reasoning
+- Time-to-first-token (TTFT) display in WebUI
+- LaTeX rendering support in WebUI
+- Cache hit rate display in WebUI
+
+### Fixed
+- Reasoning content properly passed as `<think>` tags to WebUI
+- User-set session name no longer overwritten by auto-rename (#136)
+- Server command now supports `--help`/`-h`/`--bind`/`-b` and `-p` alias for `--port` (#135)
+- WSL.exe output encoding and premature WSL1 fallback detection (#130)
+- Hide edit/delete model options when no models are configured (#133)
+- BrowserManager MCP process cleanup on agent exit in CLI mode (#132)
+- Windows-native OpenClaw config detection on WSL during onboarding (#129)
+
+### More
+- Updated Windows installation docs and added GitHub star history
+
 ## [1.1.1] - 2026-05-17
 
 ### Added
