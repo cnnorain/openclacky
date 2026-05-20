@@ -122,7 +122,7 @@ module Clacky
         },
         cache: {
           write: 0.14,                    # DeepSeek doesn't charge extra for writes; bill at miss rate
-          read: 0.0028                     # $0.028/MTok cache hit
+          read: 0.0028                     # $0.0028/MTok cache hit
         }
       },
 
@@ -137,7 +137,7 @@ module Clacky
         },
         cache: {
           write: 1.74,                    # no separate write charge; bill at miss rate
-          read: 0.0145                     # $0.145/MTok cache hit
+          read: 0.0145                     # $0.0145/MTok cache hit
         }
       },
 
