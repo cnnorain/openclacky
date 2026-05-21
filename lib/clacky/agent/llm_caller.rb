@@ -104,6 +104,7 @@ module Clacky
             tools: tools_to_send,
             max_tokens: @config.max_tokens,
             enable_caching: @config.enable_prompt_caching,
+            reasoning_effort: @reasoning_effort,
             on_chunk: build_progress_on_chunk
           )
 

@@ -52,7 +52,7 @@ module Clacky
       # @param max_tokens [Integer]
       # @param caching_enabled [Boolean] (currently unused for Bedrock)
       # @return [Hash] ready to serialize as JSON body
-      def build_request_body(messages, model, tools, max_tokens, caching_enabled = false)
+      def build_request_body(messages, model, tools, max_tokens, caching_enabled = false, reasoning_effort: nil)
         system_messages = messages.select { |m| m[:role] == "system" }
         regular_messages = messages.reject { |m| m[:role] == "system" }
 
@@ -83,7 +83,19 @@ module Clacky
           body[:toolConfig] = { tools: tools.map { |t| to_api_tool(t) } }
         end
 
+        extra = additional_fields_for_effort(reasoning_effort)
+        body[:additionalModelRequestFields] = extra if extra
+
         body
+      end
+
+      private_class_method def self.additional_fields_for_effort(effort)
+        return nil if effort.nil? || effort.to_s.empty?
+        return nil unless %w[low medium high].include?(effort.to_s)
+        {
+          thinking: { type: "adaptive" },
+          output_config: { effort: effort.to_s }
+        }
       end
 
       # ── Response parsing ──────────────────────────────────────────────────────

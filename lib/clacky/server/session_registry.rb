@@ -165,11 +165,12 @@ module Clacky
             model_info = s[:agent]&.current_model_info
             live_name  = s[:agent]&.name
             live_name  = nil if live_name&.empty?
-            live_cost_source = s[:agent]&.cost_source
-            { status: s[:status], error: s[:error], model: model_info&.dig(:model), name: live_name,
-              total_tasks: s[:agent]&.total_tasks, total_cost: s[:agent]&.total_cost,
-              cost_source: live_cost_source,
-              latest_latency: s[:agent]&.latest_latency }
+          live_cost_source = s[:agent]&.cost_source
+          { status: s[:status], error: s[:error], model: model_info&.dig(:model), name: live_name,
+            total_tasks: s[:agent]&.total_tasks, total_cost: s[:agent]&.total_cost,
+            cost_source: live_cost_source,
+            reasoning_effort: s[:agent]&.reasoning_effort,
+            latest_latency: s[:agent]&.latest_latency }
           end
         end
 
@@ -241,6 +242,7 @@ module Clacky
           { status: s[:status], error: s[:error], model: model_info&.dig(:model),
             name: live_name, total_tasks: s[:agent]&.total_tasks,
             total_cost: s[:agent]&.total_cost, cost_source: s[:agent]&.cost_source,
+            reasoning_effort: s[:agent]&.reasoning_effort,
             latest_latency: s[:agent]&.latest_latency }
         end
 
@@ -271,6 +273,7 @@ module Clacky
           # per-assistant-message `latency` fields in messages[]. Reloaded
           # sessions start with nil and get populated on the next LLM call.
           latest_latency: ls&.dig(:latest_latency),
+          reasoning_effort: ls&.dig(:reasoning_effort) || s.dig(:config, :reasoning_effort),
           pinned:        s[:pinned] || false,
         }
       end
@@ -382,7 +385,7 @@ module Clacky
         return nil unless agent
 
         model_info = agent.current_model_info
-        
+
         {
           id:              session[:id],
           name:            agent.name,

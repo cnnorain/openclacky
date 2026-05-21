@@ -43,12 +43,29 @@ module Clacky
     attr_reader :session_id, :name, :history, :iterations, :total_cost, :working_dir, :created_at, :total_tasks, :todos,
                 :cache_stats, :cost_source, :ui, :skill_loader, :agent_profile,
                 :status, :error, :updated_at, :source,
-                :latest_latency  # Hash of latency metrics from the most recent LLM call (see Client#send_messages_with_tools)
+                :latest_latency,  # Hash of latency metrics from the most recent LLM call (see Client#send_messages_with_tools)
+                :reasoning_effort
     attr_accessor :pinned
+
+    REASONING_EFFORTS = %w[low medium high].freeze
 
     def permission_mode
       @config&.permission_mode&.to_s || ""
     end
+
+    def reasoning_effort=(value)
+      @reasoning_effort = normalize_reasoning_effort(value)
+    end
+
+    private def normalize_reasoning_effort(value)
+      return nil if value.nil?
+      str = value.to_s.strip.downcase
+      return nil if str.empty? || str == "off" || str == "none"
+      return str if REASONING_EFFORTS.include?(str)
+      nil
+    end
+
+    public
 
     def initialize(client, config, working_dir:, ui:, profile:, session_id:, source:)
       @client = client  # Client for current model
@@ -79,6 +96,7 @@ module Clacky
       @task_cost_source = :estimated  # Track cost source for current task
       @previous_total_tokens = 0  # Track tokens from previous iteration for delta calculation
       @latest_latency = nil  # Most recent LLM call's latency metrics (see Client#send_messages_with_tools)
+      @reasoning_effort = nil  # Per-session reasoning effort override; nil = provider default
       @ui = ui  # UIController for direct UI interaction
       @debug_logs = []  # Debug logs for troubleshooting
       @pending_injections = []     # Pending inline skill injections to flush after observe()

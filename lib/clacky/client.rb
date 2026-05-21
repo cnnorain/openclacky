@@ -125,7 +125,7 @@ module Clacky
     #   path. When given but streaming is not yet wired for the active provider,
     #   a single synthetic invocation is fired after the response is received,
     #   so UI plumbing can be exercised end-to-end without the proxy work.
-    def send_messages_with_tools(messages, model:, tools:, max_tokens:, enable_caching: false, on_chunk: nil)
+    def send_messages_with_tools(messages, model:, tools:, max_tokens:, enable_caching: false, reasoning_effort: nil, on_chunk: nil)
       caching_enabled = enable_caching && supports_prompt_caching?(model)
       cloned = deep_clone(messages)
 
@@ -140,13 +140,13 @@ module Clacky
       response =
         if bedrock?
           streaming_used = !on_chunk.nil?
-          send_bedrock_request(cloned, model, tools, max_tokens, caching_enabled, on_chunk: wrapped_on_chunk)
+          send_bedrock_request(cloned, model, tools, max_tokens, caching_enabled, reasoning_effort: reasoning_effort, on_chunk: wrapped_on_chunk)
         elsif anthropic_format?
           streaming_used = !on_chunk.nil?
-          send_anthropic_request(cloned, model, tools, max_tokens, caching_enabled, on_chunk: wrapped_on_chunk)
+          send_anthropic_request(cloned, model, tools, max_tokens, caching_enabled, reasoning_effort: reasoning_effort, on_chunk: wrapped_on_chunk)
         else
           streaming_used = !on_chunk.nil?
-          send_openai_request(cloned, model, tools, max_tokens, caching_enabled, on_chunk: wrapped_on_chunk)
+          send_openai_request(cloned, model, tools, max_tokens, caching_enabled, reasoning_effort: reasoning_effort, on_chunk: wrapped_on_chunk)
         end
       t1 = Process.clock_gettime(Process::CLOCK_MONOTONIC)
 
@@ -217,8 +217,8 @@ module Clacky
 
     # ── Bedrock Converse request / response ───────────────────────────────────
 
-    def send_bedrock_request(messages, model, tools, max_tokens, caching_enabled, on_chunk: nil)
-      body = MessageFormat::Bedrock.build_request_body(messages, model, tools, max_tokens, caching_enabled)
+    def send_bedrock_request(messages, model, tools, max_tokens, caching_enabled, reasoning_effort: nil, on_chunk: nil)
+      body = MessageFormat::Bedrock.build_request_body(messages, model, tools, max_tokens, caching_enabled, reasoning_effort: reasoning_effort)
       return send_bedrock_stream_request(body, model, on_chunk) if on_chunk
 
       response = bedrock_connection.post(bedrock_endpoint(model)) { |r| r.body = body.to_json }
@@ -248,7 +248,10 @@ module Clacky
         end
       end
 
-      raise_error(response) unless response.status == 200
+      unless response.status == 200
+        response.env.body = sse_buf if response.body.to_s.empty?
+        raise_error(response)
+      end
       MessageFormat::Bedrock.parse_response(aggregator.to_h)
     end
 
@@ -263,11 +266,11 @@ module Clacky
 
     # ── Anthropic request / response ──────────────────────────────────────────
 
-    def send_anthropic_request(messages, model, tools, max_tokens, caching_enabled, on_chunk: nil)
+    def send_anthropic_request(messages, model, tools, max_tokens, caching_enabled, reasoning_effort: nil, on_chunk: nil)
       # Apply cache_control to the message that marks the cache breakpoint
       messages = apply_message_caching(messages) if caching_enabled
 
-      body = MessageFormat::Anthropic.build_request_body(messages, model, tools, max_tokens, caching_enabled)
+      body = MessageFormat::Anthropic.build_request_body(messages, model, tools, max_tokens, caching_enabled, reasoning_effort: reasoning_effort)
       return send_anthropic_stream_request(body, on_chunk) if on_chunk
 
       response = anthropic_connection.post(anthropic_messages_path) { |r| r.body = body.to_json }
@@ -304,14 +307,15 @@ module Clacky
 
     # ── OpenAI request / response ─────────────────────────────────────────────
 
-    def send_openai_request(messages, model, tools, max_tokens, caching_enabled, on_chunk: nil)
+    def send_openai_request(messages, model, tools, max_tokens, caching_enabled, reasoning_effort: nil, on_chunk: nil)
       # Apply cache_control markers to messages when caching is enabled.
       # OpenRouter proxies Claude with the same cache_control field convention as Anthropic direct.
       messages = apply_message_caching(messages) if caching_enabled
 
       body = MessageFormat::OpenAI.build_request_body(
         messages, model, tools, max_tokens, caching_enabled,
-        vision_supported: @vision_supported
+        vision_supported: @vision_supported,
+        reasoning_effort: reasoning_effort
       )
       return send_openai_stream_request(body, on_chunk) if on_chunk
 

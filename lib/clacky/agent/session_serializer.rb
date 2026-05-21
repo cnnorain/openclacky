@@ -63,6 +63,9 @@ module Clacky
           @pending_error_rollback = true
         end
 
+        saved_reasoning = session_data.dig(:config, :reasoning_effort)
+        self.reasoning_effort = saved_reasoning if saved_reasoning
+
         # Restore the session's original model if it still exists in the current
         # config. This prevents all sessions from silently switching to the new
         # default model when the user changes it and restarts. Falls back to the
@@ -128,6 +131,7 @@ module Clacky
             enable_prompt_caching: @config.enable_prompt_caching,
             max_tokens: @config.max_tokens,
             verbose: @config.verbose,
+            reasoning_effort: @reasoning_effort,
             # Persist the current model identity so the session can restore its
             # original model on restart. model_name + model_base_url form a
             # composite key to avoid matching a different provider's model of

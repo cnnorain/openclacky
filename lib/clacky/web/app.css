@@ -2461,6 +2461,60 @@ body {
   opacity: 1 !important;
   color: var(--color-accent-primary);
 }
+
+/* Reasoning effort switcher — same dropdown pattern as model switcher */
+.sib-reasoning-clickable {
+  cursor: pointer;
+  border-radius: 3px;
+  transition: all 0.15s ease;
+  font-variant-numeric: tabular-nums;
+}
+.sib-reasoning-clickable:hover {
+  background: var(--color-bg-hover);
+  opacity: 1 !important;
+  color: var(--color-accent-primary);
+}
+.sib-reasoning-dropdown {
+  position: fixed;
+  min-width: 11rem;
+  background: var(--color-bg-secondary);
+  border: 1px solid var(--color-border-primary);
+  border-radius: 8px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+  z-index: 1000;
+  overflow: hidden;
+}
+.sib-reasoning-header {
+  padding: 0.5rem 0.875rem;
+  border-bottom: 1px solid var(--color-border-primary);
+}
+.sib-reasoning-heading {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--color-text-primary);
+}
+.sib-reasoning-hint {
+  margin-top: 0.1875rem;
+  font-size: 0.6875rem;
+  color: var(--color-text-secondary);
+  line-height: 1.35;
+}
+.sib-reasoning-option {
+  padding: 0.5625rem 0.875rem;
+  font-size: 0.75rem;
+  color: var(--color-text-primary);
+  cursor: pointer;
+  transition: background-color 0.15s ease;
+  font-family: var(--font-mono, monospace);
+}
+.sib-reasoning-option:hover {
+  background: var(--color-bg-hover);
+  color: var(--color-accent-primary);
+}
+.sib-reasoning-option.current {
+  background: var(--color-bg-hover);
+  font-weight: 600;
+}
 .sib-model-dropdown {
   position: fixed;
   /* Position will be calculated dynamically via JavaScript */
@@ -2587,6 +2641,9 @@ body {
   min-width: 2.75rem;            /* reserves space so rows don't jitter before benchmark */
   text-align: right;
   color: var(--color-text-secondary);
+}
+.sib-model-option .sib-model-latency:empty {
+  display: none;
 }
 .sib-model-option .sib-model-latency.is-ok   { color: var(--color-accent-primary); }
 .sib-model-option .sib-model-latency.is-warn { color: #d39e00; }
@@ -6990,7 +7047,9 @@ body.setup-mode[data-theme="dark"] {
   #sib-dir,
   .sib-sep-after-dir,
   #sib-mode,
-  .sib-sep-after-mode {
+  .sib-sep-after-mode,
+  #sib-reasoning-wrap,
+  .sib-sep-after-reasoning {
     display: none;
   }
   .sib-sep {

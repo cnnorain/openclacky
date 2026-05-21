@@ -48,7 +48,7 @@ module Clacky
       # @param max_tokens [Integer]
       # @param caching_enabled [Boolean]
       # @return [Hash] ready to serialize as JSON body
-      def build_request_body(messages, model, tools, max_tokens, caching_enabled)
+      def build_request_body(messages, model, tools, max_tokens, caching_enabled, reasoning_effort: nil)
         system_messages = messages.select { |m| m[:role] == "system" }
         regular_messages = messages.reject { |m| m[:role] == "system" }
 
@@ -64,7 +64,19 @@ module Clacky
         body = { model: model, max_tokens: max_tokens, messages: api_messages }
         body[:system] = system_text unless system_text.empty?
         body[:tools]  = api_tools   if api_tools&.any?
+
+        if (effort = normalized_effort(reasoning_effort))
+          body[:thinking] = { type: "adaptive" }
+          body[:output_config] = { effort: effort }
+        end
+
         body
+      end
+
+      private_class_method def self.normalized_effort(effort)
+        return nil if effort.nil? || effort.to_s.empty?
+        s = effort.to_s
+        %w[low medium high].include?(s) ? s : nil
       end
 
       # ── Response parsing ──────────────────────────────────────────────────────

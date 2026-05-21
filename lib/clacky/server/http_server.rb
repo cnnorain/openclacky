@@ -448,6 +448,9 @@ module Clacky
           elsif method == "PATCH" && path.match?(%r{^/api/sessions/[^/]+/model$})
             session_id = path.sub("/api/sessions/", "").sub("/model", "")
             api_switch_session_model(session_id, req, res)
+          elsif method == "PATCH" && path.match?(%r{^/api/sessions/[^/]+/reasoning_effort$})
+            session_id = path.sub("/api/sessions/", "").sub("/reasoning_effort", "")
+            api_switch_session_reasoning_effort(session_id, req, res)
           elsif method == "POST" && path.match?(%r{^/api/sessions/[^/]+/benchmark$})
             session_id = path.sub("/api/sessions/", "").sub("/benchmark", "")
             api_benchmark_session_models(session_id, req, res)
@@ -3087,6 +3090,26 @@ module Clacky
         broadcast_session_update(session_id)
 
         json_response(res, 200, { ok: true, model_id: model_id, model: target_model["model"] })
+      rescue => e
+        json_response(res, 500, { error: e.message })
+      end
+
+      # PATCH /api/sessions/:id/reasoning_effort
+      # Body: { "reasoning_effort": "off" | "low" | "medium" | "high" }
+      def api_switch_session_reasoning_effort(session_id, req, res)
+        body = parse_json_body(req)
+        raw = body["reasoning_effort"]
+        return json_response(res, 404, { error: "Session not found" }) unless @registry.ensure(session_id)
+
+        agent = nil
+        @registry.with_session(session_id) { |s| agent = s[:agent] }
+        return json_response(res, 404, { error: "Session not found" }) unless agent
+
+        agent.reasoning_effort = raw
+        @session_manager.save(agent.to_session_data)
+        broadcast_session_update(session_id)
+
+        json_response(res, 200, { ok: true, reasoning_effort: agent.reasoning_effort })
       rescue => e
         json_response(res, 500, { error: e.message })
       end
