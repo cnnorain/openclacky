@@ -5,6 +5,22 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.4] - 2026-05-22
+
+### Added
+- Thinking level control for AI models, configurable per provider
+- Free brand customization support
+- Syntax highlighting and per-block copy button for code blocks in Web UI (#152)
+- Font size setting (small/medium/large) with proportional UI scaling in Web UI (#147)
+- Chinese README documentation (#148)
+
+### Improved
+- Unify POST /api/file-action with download support for remote deployments (#153)
+- Hover interaction polish across Web UI
+
+### Fixed
+- Upgrade hot reload no longer leaves stale process (#143)
+
 ## [1.1.3] - 2026-05-20
 
 ### Added
