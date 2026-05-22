@@ -412,6 +412,9 @@ module Clacky
         when ["GET",    "/api/version"]           then api_get_version(res)
         when ["POST",   "/api/version/upgrade"]   then api_upgrade_version(req, res)
         when ["POST",   "/api/restart"]           then api_restart(req, res)
+        when ["GET",    "/api/billing/summary"]   then api_billing_summary(req, res)
+        when ["GET",    "/api/billing/daily"]     then api_billing_daily(req, res)
+        when ["GET",    "/api/billing/records"]   then api_billing_records(req, res)
         when ["PATCH",  "/api/sessions/:id/model"] then api_switch_session_model(req, res)
         when ["PATCH",  "/api/sessions/:id/working_dir"] then api_change_session_working_dir(req, res)
         else
@@ -1061,6 +1064,58 @@ module Clacky
       end
 
       # ── Version API ───────────────────────────────────────────────────────────
+
+      # ── Billing API ────────────────────────────────────────────────────────────
+
+      # GET /api/billing/summary
+      # Returns billing summary for a time period
+      # Query params: period (day|week|month|year|all, default: month)
+      def api_billing_summary(req, res)
+        require_relative "../billing/billing_store"
+
+        query  = URI.decode_www_form(req.query_string.to_s).to_h
+        period = (query["period"] || "month").to_sym
+
+        store   = Clacky::Billing::BillingStore.new
+        summary = store.summary(period: period)
+
+        json_response(res, 200, summary)
+      end
+
+      # GET /api/billing/daily
+      # Returns daily cost breakdown
+      # Query params: days (default: 30)
+      def api_billing_daily(req, res)
+        require_relative "../billing/billing_store"
+
+        query = URI.decode_www_form(req.query_string.to_s).to_h
+        days  = [(query["days"] || "30").to_i, 90].min
+
+        store = Clacky::Billing::BillingStore.new
+        daily = store.daily_breakdown(days: days)
+
+        json_response(res, 200, { days: daily })
+      end
+
+      # GET /api/billing/records
+      # Returns recent billing records
+      # Query params: limit (default: 100), model, session_id
+      def api_billing_records(req, res)
+        require_relative "../billing/billing_store"
+
+        query      = URI.decode_www_form(req.query_string.to_s).to_h
+        limit      = [(query["limit"] || "100").to_i, 500].min
+        model      = query["model"]
+        session_id = query["session_id"]
+
+        store   = Clacky::Billing::BillingStore.new
+        records = store.query(model: model, session_id: session_id, limit: limit)
+
+        json_response(res, 200, {
+          records: records.map(&:to_h),
+          count: records.size
+        })
+      end
 
       # GET /api/version
       # Returns current version and latest version from RubyGems (cached for 1 hour).

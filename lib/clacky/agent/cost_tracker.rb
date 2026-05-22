@@ -1,10 +1,18 @@
 # frozen_string_literal: true
 
+require_relative "../billing/billing_store"
+require_relative "../billing/billing_record"
+
 module Clacky
   class Agent
     # Cost tracking and token usage statistics
     # Manages cost calculation, token estimation, and usage display
     module CostTracker
+      # Lazy-loaded billing store instance
+      def billing_store
+        @billing_store ||= Billing::BillingStore.new
+      end
+
       # Track cost from API usage
       # Updates total cost and displays iteration statistics
       # @param usage [Hash] Usage data from API response
@@ -89,8 +97,37 @@ module Clacky
           end
         end
 
+        # Persist billing record (skip for subagents to avoid double-counting)
+        unless @is_subagent
+          persist_billing_record(usage, iteration_cost)
+        end
+
         # Return token_data so the caller can display it at the right moment
         token_data
+      end
+
+      # Persist a billing record to the billing store
+      # @param usage [Hash] Usage data from API
+      # @param cost [Float, nil] Calculated cost for this iteration
+      def persist_billing_record(usage, cost)
+        return if cost.nil? # Skip if cost is unknown
+
+        record = Billing::BillingRecord.new(
+          session_id: @session_id,
+          timestamp: Time.now,
+          model: current_model,
+          prompt_tokens: usage[:prompt_tokens] || 0,
+          completion_tokens: usage[:completion_tokens] || 0,
+          cache_read_tokens: usage[:cache_read_input_tokens] || 0,
+          cache_write_tokens: usage[:cache_creation_input_tokens] || 0,
+          cost_usd: cost,
+          cost_source: @cost_source
+        )
+
+        billing_store.append(record)
+      rescue => e
+        # Billing persistence is non-critical; log and continue
+        @ui&.log("Failed to persist billing record: #{e.message}", level: :debug) if @config&.verbose
       end
 
       # Estimate token count for a message content

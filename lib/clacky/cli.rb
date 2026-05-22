@@ -437,6 +437,14 @@ module Clacky
 
       CLI_DEFAULT_SESSION_NAME = "CLI Session"
 
+      # Format a number with thousand separators for display
+      # @param num [Integer, Float] The number to format
+      # @return [String] Formatted number string
+      private def format_number(num)
+        return "0" if num.nil? || num == 0
+        num.to_s.reverse.gsub(/(\d{3})(?=\d)/, '\\1,').reverse
+      end
+
       # Auto-name a CLI session from the first user message, mirroring server-side logic.
       # Renames when the agent has no history yet (i.e. first message of the session).
       private def auto_name_session(agent, input)
@@ -929,6 +937,98 @@ module Clacky
 
 
 
+    end
+
+    # ── billing command ────────────────────────────────────────────────────────
+    desc "billing", "Show billing summary and usage statistics"
+    long_desc <<-LONGDESC
+      Display billing summary with token usage and cost breakdown.
+
+      Period options:
+        day    - Today's usage
+        week   - Last 7 days
+        month  - Current month (default)
+        year   - Current year
+        all    - All time
+
+      Examples:
+        $ clacky billing
+        $ clacky billing --period week
+        $ clacky billing --period all --json
+    LONGDESC
+    option :period, type: :string, default: "month",
+           desc: "Time period: day, week, month, year, all (default: month)"
+    option :json, type: :boolean, default: false,
+           desc: "Output as JSON"
+    option :days, type: :numeric, default: 30,
+           desc: "Number of days for daily breakdown (default: 30)"
+    option :help, type: :boolean, aliases: "-h", desc: "Show this help message"
+    def billing
+      if options[:help]
+        invoke :help, ["billing"]
+        return
+      end
+
+      require_relative "billing/billing_store"
+
+      store = Clacky::Billing::BillingStore.new
+      period = options[:period].to_sym
+      summary = store.summary(period: period)
+
+      if options[:json]
+        require "json"
+        puts JSON.pretty_generate(summary)
+        return
+      end
+
+      # Display formatted billing summary
+      puts ""
+      puts "📊 Billing Summary (#{period})"
+      puts "─" * 50
+      puts ""
+
+      # Total cost
+      cost_str = summary[:total_cost] > 0 ? "$#{format('%.4f', summary[:total_cost])}" : "$0.0000"
+      puts "  💰 Total Cost:       #{cost_str}"
+      puts "  📝 Total Tokens:     #{format_number(summary[:total_tokens])}"
+      puts "  📥 Prompt Tokens:    #{format_number(summary[:prompt_tokens])}"
+      puts "  📤 Completion:       #{format_number(summary[:completion_tokens])}"
+      puts "  🗄️  Cache Read:       #{format_number(summary[:cache_read_tokens])}"
+      puts "  📝 Cache Write:      #{format_number(summary[:cache_write_tokens])}"
+      puts "  🔢 API Requests:     #{summary[:record_count]}"
+      puts ""
+
+      # By model breakdown
+      if summary[:by_model] && !summary[:by_model].empty?
+        puts "📈 By Model:"
+        puts "─" * 50
+        summary[:by_model].each do |model, data|
+          cost = data.is_a?(Hash) ? data[:cost] : data
+          requests = data.is_a?(Hash) ? data[:requests] : "?"
+          puts "  #{model}"
+          puts "    Cost: $#{format('%.4f', cost)}  |  Requests: #{requests}"
+        end
+        puts ""
+      end
+
+      # Daily breakdown (last N days)
+      daily = store.daily_breakdown(days: [options[:days], 14].min)
+      recent_days = daily.select { |d| d[:cost] > 0 }.last(7)
+
+      if recent_days.any?
+        puts "📅 Recent Daily Usage:"
+        puts "─" * 50
+        recent_days.each do |day|
+          bar_len = [(day[:cost] * 100).to_i, 30].min
+          bar = "█" * bar_len
+          puts "  #{day[:date]}  $#{format('%.4f', day[:cost])}  #{bar}"
+        end
+        puts ""
+      end
+
+      puts "─" * 50
+      puts "  Data stored in: ~/.clacky/billing/"
+      puts ""
     end
 
     # ── server command ─────────────────────────────────────────────────────────

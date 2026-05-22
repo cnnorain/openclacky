@@ -196,6 +196,17 @@
               </div>
             </div>
           </div>
+          <div id="billing-sidebar-item" class="task-item task-item-summary">
+            <div class="task-row">
+              <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="task-icon">
+                <line x1="12" y1="1" x2="12" y2="23"/>
+                <path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/>
+              </svg>
+              <div class="task-info">
+                <span class="task-name" id="billing-sidebar-label" data-i18n="sidebar.billing">Billing</span>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
 
@@ -651,6 +662,15 @@
       </div>
     </div>
 
+    <!-- ── BILLING PANEL ───────────────────────────────────────────────── -->
+    <div id="billing-panel" style="display:none">
+      <div id="billing-body">
+        <div id="billing-content">
+          <!-- Content loaded dynamically by billing.js -->
+        </div>
+      </div>
+    </div>
+
     <!-- ── SETTINGS PANEL ──────────────────────────────────────────────── -->
     <div id="settings-panel" style="display:none">
       <header id="settings-header">
@@ -715,6 +735,17 @@
             <button id="settings-btn-font-small" class="settings-lang-btn" data-font="small" data-i18n="settings.fontSize.small">小</button>
             <button id="settings-btn-font-medium" class="settings-lang-btn" data-font="medium" data-i18n="settings.fontSize.medium">中</button>
             <button id="settings-btn-font-large" class="settings-lang-btn" data-font="large" data-i18n="settings.fontSize.large">大</button>
+          </div>
+        </section>
+
+        <!-- Currency section -->
+        <section class="settings-section" id="currency-section">
+          <div class="settings-section-title">
+            <span data-i18n="settings.currency.title">Currency</span>
+          </div>
+          <div class="settings-lang-btns">
+            <button id="settings-btn-currency-usd" class="settings-lang-btn" data-currency="USD">$ USD</button>
+            <button id="settings-btn-currency-cny" class="settings-lang-btn" data-currency="CNY">¥ CNY</button>
           </div>
         </section>
 
@@ -1029,6 +1060,7 @@
 <script src="/skills.js"></script>
 <script src="/channels.js"></script>
 <script src="/settings.js"></script>
+<script src="/billing.js"></script>
 <script src="/onboard.js"></script>
 <script src="/brand.js"></script>
 <script src="/creator.js"></script>
