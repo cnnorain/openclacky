@@ -200,6 +200,7 @@ module Clacky
       return nil unless model
 
       {
+        id: model["id"],
         name: model["name"],
         model: model["model"],
         base_url: model["base_url"]

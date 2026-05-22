@@ -166,7 +166,7 @@ module Clacky
             live_name  = s[:agent]&.name
             live_name  = nil if live_name&.empty?
           live_cost_source = s[:agent]&.cost_source
-          { status: s[:status], error: s[:error], model: model_info&.dig(:model), name: live_name,
+          { status: s[:status], error: s[:error], model: model_info&.dig(:model), model_id: model_info&.dig(:id), name: live_name,
             total_tasks: s[:agent]&.total_tasks, total_cost: s[:agent]&.total_cost,
             cost_source: live_cost_source,
             reasoning_effort: s[:agent]&.reasoning_effort,
@@ -239,7 +239,7 @@ module Clacky
           model_info = s[:agent]&.current_model_info
           live_name  = s[:agent]&.name
           live_name  = nil if live_name&.empty?
-          { status: s[:status], error: s[:error], model: model_info&.dig(:model),
+          { status: s[:status], error: s[:error], model: model_info&.dig(:model), model_id: model_info&.dig(:id),
             name: live_name, total_tasks: s[:agent]&.total_tasks,
             total_cost: s[:agent]&.total_cost, cost_source: s[:agent]&.cost_source,
             reasoning_effort: s[:agent]&.reasoning_effort,
@@ -260,6 +260,7 @@ module Clacky
           status:        ls ? ls[:status].to_s : "idle",
           error:         ls ? ls[:error] : nil,
           model:         ls&.dig(:model),
+          model_id:      ls&.dig(:model_id),
           source:        s_source(s),
           agent_profile: (s[:agent_profile] || "general").to_s,
           working_dir:   s[:working_dir],
