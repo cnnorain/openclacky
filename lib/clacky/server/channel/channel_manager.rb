@@ -51,6 +51,19 @@ module Clacky
       # Start all enabled adapters in background threads. Non-blocking.
       def start
         enabled_platforms = @channel_config.enabled_platforms
+
+        # Also include enabled plugin platforms
+        require_relative "../../plugin"
+        plugin_platforms = Clacky::Plugin.manager&.plugin_platforms || {}
+        plugin_platforms.each do |name, info|
+          # Check if plugin platform is enabled in plugin config
+          plugin_name = info[:plugin]&.name
+          plugin_config = Clacky::Plugin.manager&.get_plugin_config(plugin_name) || {}
+          if plugin_config[:enabled] != false && !enabled_platforms.include?(name.to_sym)
+            enabled_platforms << name.to_sym
+          end
+        end
+
         if enabled_platforms.empty?
           Clacky::Logger.info("[ChannelManager] No channels configured — skipping")
           return
@@ -172,12 +185,28 @@ module Clacky
 
       def start_adapter(platform)
         klass = Adapters.find(platform)
+        plugin_platform = nil
+
+        # Fall back to plugin-provided platforms
+        unless klass
+          require_relative "../../plugin"
+          plugin_platform = Clacky::Plugin.manager&.plugin_platforms&.dig(platform.to_s)
+          klass = plugin_platform[:adapter_class] if plugin_platform
+        end
+
         unless klass
           Clacky::Logger.warn("[ChannelManager] No adapter registered for :#{platform} — skipping")
           return
         end
 
-        raw_config = @channel_config.platform_config(platform)
+        # Get config: plugin platforms use plugin config, built-in use channel config
+        raw_config = if plugin_platform
+          plugin_name = plugin_platform[:plugin]&.name
+          Clacky::Plugin.manager&.get_plugin_config(plugin_name) || {}
+        else
+          @channel_config.platform_config(platform)
+        end
+
         Clacky::Logger.info("[ChannelManager] Initializing :#{platform} adapter")
         adapter = klass.new(raw_config)
 

@@ -379,6 +379,8 @@ module Clacky
         when ["GET",    "/api/cron-tasks"]    then api_list_cron_tasks(res)
         when ["POST",   "/api/cron-tasks"]    then api_create_cron_task(req, res)
         when ["GET",    "/api/skills"]         then api_list_skills(res)
+        when ["GET",    "/api/plugins"]        then api_list_plugins(res)
+        when ["POST",   "/api/plugins/reload"] then api_reload_plugins(res)
         when ["GET",    "/api/config"]        then api_get_config(res)
         when ["POST",   "/api/config/models"] then api_add_model(req, res)
         when ["POST",   "/api/config/test"]   then api_test_config(req, res)
@@ -418,7 +420,16 @@ module Clacky
         when ["PATCH",  "/api/sessions/:id/model"] then api_switch_session_model(req, res)
         when ["PATCH",  "/api/sessions/:id/working_dir"] then api_change_session_working_dir(req, res)
         else
-          if method == "POST" && path.match?(%r{^/api/channels/[^/]+/send$})
+          if method == "POST" && path.match?(%r{^/api/plugins/([^/]+)/toggle$})
+            key = path.sub("/api/plugins/", "").sub("/toggle", "")
+            api_toggle_plugin(key, res)
+          elsif method == "GET" && path.match?(%r{^/api/plugins/([^/]+)/config$})
+            key = path.sub("/api/plugins/", "").sub("/config", "")
+            api_get_plugin_config(key, res)
+          elsif method == "PATCH" && path.match?(%r{^/api/plugins/([^/]+)/config$})
+            key = path.sub("/api/plugins/", "").sub("/config", "")
+            api_save_plugin_config(key, req, res)
+          elsif method == "POST" && path.match?(%r{^/api/channels/[^/]+/send$})
             platform = path.sub("/api/channels/", "").sub("/send", "")
             api_send_channel_message(platform, req, res)
           elsif method == "GET" && path.match?(%r{^/api/channels/[^/]+/users$})
@@ -2031,6 +2042,105 @@ module Clacky
         json_response(res, 202, { ok: true, session: @registry.session_summary(session_id) })
       rescue => e
         json_response(res, 422, { error: e.message })
+      end
+
+      # ── Plugins API ──────────────────────────────────────────────────────────
+
+      # GET /api/plugins — list all discovered plugins with metadata
+      def api_list_plugins(res)
+        require_relative "../plugin"
+        manager = Clacky::Plugin.manager
+        manager.discover_and_load unless manager.plugins.any?
+
+        plugins = manager.plugins.values.map do |plugin|
+          plugin_config = manager.get_plugin_config(plugin.name)
+          {
+            key: plugin.key,
+            name: plugin.name,
+            version: plugin.version,
+            description: plugin.description,
+            author: plugin.author,
+            kind: plugin.kind,
+            enabled: plugin.enabled,
+            error: plugin.error,
+            tools: plugin.tools_registered,
+            hooks: plugin.hooks_registered,
+            commands: plugin.commands_registered,
+            has_config: !plugin_config.empty?,
+            path: plugin.directory
+          }
+        end
+        json_response(res, 200, { plugins: plugins })
+      end
+
+      # POST /api/plugins/reload — refresh plugin list (safe, doesn't interrupt running plugins)
+      def api_reload_plugins(res)
+        require_relative "../plugin"
+        Clacky::Plugin.refresh
+        json_response(res, 200, { ok: true, message: "Plugin list refreshed" })
+      rescue StandardError => e
+        json_response(res, 500, { ok: false, error: e.message })
+      end
+
+      # POST /api/plugins/:key/toggle — enable/disable a plugin
+      def api_toggle_plugin(key, res)
+        require_relative "../plugin"
+        manager = Clacky::Plugin.manager
+        plugin = manager.plugins[key]
+
+        unless plugin
+          json_response(res, 404, { ok: false, error: "Plugin not found" })
+          return
+        end
+
+        if plugin.enabled
+          manager.disable_plugin(key)
+        else
+          manager.enable_plugin(key)
+        end
+
+        json_response(res, 200, { ok: true, enabled: plugin.enabled })
+      rescue StandardError => e
+        json_response(res, 500, { ok: false, error: e.message })
+      end
+
+      # GET /api/plugins/:key/config — get plugin configuration
+      def api_get_plugin_config(key, res)
+        require_relative "../plugin"
+        manager = Clacky::Plugin.manager
+        plugin = manager.plugins[key]
+
+        unless plugin
+          json_response(res, 404, { ok: false, error: "Plugin not found" })
+          return
+        end
+
+        config = manager.get_plugin_config(plugin.name)
+        json_response(res, 200, { ok: true, config: config })
+      rescue StandardError => e
+        json_response(res, 500, { ok: false, error: e.message })
+      end
+
+      # PATCH /api/plugins/:key/config — save plugin configuration
+      def api_save_plugin_config(key, req, res)
+        require_relative "../plugin"
+        manager = Clacky::Plugin.manager
+        plugin = manager.plugins[key]
+
+        unless plugin
+          json_response(res, 404, { ok: false, error: "Plugin not found" })
+          return
+        end
+
+        body = JSON.parse(req.body.to_s)
+        new_config = body["config"] || {}
+
+        # Save config using plugin manager's method
+        manager.save_plugin_config(plugin.name, new_config)
+
+        json_response(res, 200, { ok: true, config: new_config })
+      rescue StandardError => e
+        json_response(res, 500, { ok: false, error: e.message })
       end
 
       # ── Skills API ────────────────────────────────────────────────────────────
