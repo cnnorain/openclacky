@@ -74,6 +74,15 @@ module Clacky
         return { matched: false } if skill_name.empty?
 
         skill = @skill_loader.find_by_command("/#{skill_name}")
+
+        # Check plugin commands if skill not found
+        unless skill
+          plugin_cmd = Clacky::Plugin.manager&.get_command(skill_name)
+          if plugin_cmd
+            return { matched: true, found: true, skill_name: skill_name, plugin_command: plugin_cmd, arguments: arguments }
+          end
+        end
+
         return { matched: true, found: false, skill_name: skill_name, reason: :not_found } unless skill
 
         unless skill.user_invocable?
@@ -192,6 +201,22 @@ module Clacky
         return unless result[:matched]
 
         skill_name = result[:skill_name]
+
+        # Handle plugin commands - return hash with response to display
+        if result[:plugin_command]
+          plugin_cmd = result[:plugin_command]
+          arguments = result[:arguments]
+          begin
+            response = Clacky::Plugin.manager.execute_command(skill_name, arguments)
+            @history.append({ role: "assistant", content: response, task_id: task_id, system_injected: true })
+            return { type: :plugin_command_handled, response: response }
+          rescue StandardError => e
+            Clacky::Logger.error("[SkillManager] Plugin command /#{skill_name} failed: #{e.message}")
+            error_msg = "Plugin command /#{skill_name} failed: #{e.message}"
+            @history.append({ role: "assistant", content: error_msg, task_id: task_id, system_injected: true })
+            return { type: :plugin_command_handled, response: error_msg }
+          end
+        end
 
         # Slash command recognised but skill could not be dispatched — inject an
         # LLM-facing notice so the model explains the situation to the user in

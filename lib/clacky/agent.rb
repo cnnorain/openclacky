@@ -23,6 +23,7 @@ require_relative "agent/memory_updater"
 require_relative "agent/skill_evolution"
 require_relative "agent/skill_reflector"
 require_relative "agent/skill_auto_creator"
+require_relative "plugin"
 
 module Clacky
   class Agent
@@ -44,6 +45,7 @@ module Clacky
                 :cache_stats, :cost_source, :ui, :skill_loader, :agent_profile,
                 :status, :error, :updated_at, :source,
                 :latest_latency,  # Hash of latency metrics from the most recent LLM call (see Client#send_messages_with_tools)
+                :plugin_manager,  # Plugin system manager for extensions
                 :reasoning_effort
     attr_accessor :pinned
 
@@ -135,6 +137,13 @@ module Clacky
 
       # Ensure bundled shell scripts are in place (~/.clacky/scripts/)
       Utils::ScriptsManager.setup!
+
+      # Initialize plugin system
+      @plugin_manager = Plugin.setup(
+        working_dir: @working_dir,
+        agent: self,
+        tool_registry: @tool_registry
+      )
     end
 
     # Restore from a saved session
@@ -151,6 +160,11 @@ module Clacky
 
     def add_hook(event, &block)
       @hooks.add(event, &block)
+    end
+
+    # Hot reload plugins without restarting the agent.
+    def reload_plugins
+      @plugin_manager&.reload
     end
 
     # Switch this session to a different model, identified by its stable
@@ -370,7 +384,14 @@ module Clacky
       # If the user typed a slash command targeting a skill with disable-model-invocation: true,
       # inject the skill content as a synthetic assistant message so the LLM can act on it.
       # Skills already in the system prompt (model_invocation_allowed?) are skipped.
-      inject_skill_command_as_assistant_message(user_input, task_id)
+      skill_result = inject_skill_command_as_assistant_message(user_input, task_id)
+
+      # Plugin commands are fully handled - skip AI loop and return immediately
+      if skill_result.is_a?(Hash) && skill_result[:type] == :plugin_command_handled
+        @ui&.show_assistant_message(skill_result[:response], files: [])
+        @hooks.trigger(:on_complete, nil)
+        return
+      end
 
       @hooks.trigger(:on_start, user_input)
 
