@@ -120,9 +120,7 @@ module Clacky
         }
       end
 
-      private
-
-      def parse_manifest
+      private def parse_manifest
         unless @manifest_path.exist?
           @error = "Manifest file not found: #{@manifest_path}"
           return

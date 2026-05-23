@@ -64,8 +64,6 @@ module Clacky
         result
       end
 
-      private
-
       # Scan a directory for plugins.
       #
       # Supports two layouts:
@@ -75,7 +73,7 @@ module Clacky
       # @param dir [Pathname] Directory to scan
       # @param prefix [String] Category prefix for nested plugins
       # @param depth [Integer] Current recursion depth (max 2)
-      def scan_directory(dir, prefix: "", depth: 0)
+      private def scan_directory(dir, prefix: "", depth: 0)
         return unless dir.exist? && dir.directory?
 
         dir.children.select(&:directory?).sort.each do |child|
@@ -99,7 +97,7 @@ module Clacky
       # Later sources override earlier ones on key collision.
       #
       # @param plugin [Plugin] Plugin to register
-      def register_plugin(plugin)
+      private def register_plugin(plugin)
         key = plugin.key
 
         if @plugins.key?(key)

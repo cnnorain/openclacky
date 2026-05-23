@@ -589,10 +589,8 @@ module Clacky
         reload_config
       end
 
-      private
-
       # Load a plugin file and return the module.
-      def load_plugin_file(path, plugin)
+      private def load_plugin_file(path, plugin)
         # Create a new module to contain the plugin code
         plugin_module = Module.new
 
@@ -613,7 +611,7 @@ module Clacky
       end
 
       # Clear all plugin registrations.
-      def clear_registrations
+      private def clear_registrations
         @plugin_tools.clear
         @plugin_hooks.clear
         @plugin_commands.clear
@@ -621,7 +619,7 @@ module Clacky
       end
 
       # Load configuration from config.yaml.
-      def load_config
+      private def load_config
         @config_cache = {}
 
         config_paths = [
@@ -645,14 +643,14 @@ module Clacky
       end
 
       # Get list of enabled plugins from config.
-      def get_enabled_plugins
+      private def get_enabled_plugins
         load_config unless @config_cache
         enabled = @config_cache.dig("plugins", "enabled")
         enabled.is_a?(Array) ? Set.new(enabled) : nil
       end
 
       # Get list of disabled plugins from config.
-      def get_disabled_plugins
+      private def get_disabled_plugins
         load_config unless @config_cache
         disabled = @config_cache.dig("plugins", "disabled") || []
         Set.new(disabled)
