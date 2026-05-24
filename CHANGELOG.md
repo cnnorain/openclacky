@@ -5,6 +5,43 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.0] - 2026-05-24
+
+### Added
+- MCP (Model Context Protocol) support with HTTP server transport
+- MCP management skill for adding, listing, probing, and reconfiguring MCP servers
+- Settings panel restructure with new "UI" and "About" tabs
+- Advanced settings toggles for compression, prompt caching, and memory update
+- Session recycle bin with soft-delete, restore, and bulk-empty operations (#172)
+- Billing system with USD/CNY currency settings (#166)
+- Configurable default working directory (#170)
+- Model ID select for switching between configured model IDs
+- Sequential image naming with upload order guarantee in Web UI (#188)
+- Browser link tips in agent output
+- Fallback URL support for model providers
+- ROADMAP.md outlining four focus areas
+
+### Improved
+- Browser tool reliability and ergonomics
+- Idle compression interval increased to 314s for fewer interruptions
+- Removed dead WeChat split_message and markdown_to_plain code paths (#187)
+
+### Fixed
+- Brand setting persistence
+- Interactive feedback card now restored during history replay (C-5599) (#190)
+- Model switcher disabled while agent is responding (C-5559) (#189)
+- Stale function call no longer breaks interrupt handling
+- Trash tool now supports directory deletion (#173)
+- Command suggestions dropdown scrolling (#157)
+- Comprehensive mobile Web UI fixes (#165)
+- WSL_UTF8=1 vs OutputEncoding=Unicode conflict in Test-UbuntuInstalled (#164)
+- USR1 hot-reload session info drop bug (#142)
+
+### More
+- DeepSeek price update
+- Contributors list and contributing readme
+- Session translation polish
+
 ## [1.1.6] - 2026-05-22
 
 ### Added
