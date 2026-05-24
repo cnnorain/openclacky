@@ -393,6 +393,8 @@ module Clacky
         when ["POST",   "/api/cron-tasks"]    then api_create_cron_task(req, res)
         when ["GET",    "/api/skills"]         then api_list_skills(res)
         when ["GET",    "/api/config"]        then api_get_config(res)
+        when ["GET",    "/api/config/settings"]  then api_get_settings(res)
+        when ["PATCH",  "/api/config/settings"]  then api_update_settings(req, res)
         when ["POST",   "/api/config/models"] then api_add_model(req, res)
         when ["POST",   "/api/config/test"]   then api_test_config(req, res)
         when ["GET",    "/api/providers"]     then api_list_providers(res)
@@ -3191,6 +3193,37 @@ module Clacky
           current_index: @agent_config.current_model_index,
           current_id: @agent_config.current_model&.dig("id")
         })
+      end
+
+      # GET /api/config/settings — return advanced settings
+      def api_get_settings(res)
+        json_response(res, 200, {
+          ok: true,
+          enable_compression: @agent_config.enable_compression,
+          enable_prompt_caching: @agent_config.enable_prompt_caching,
+          memory_update_enabled: @agent_config.memory_update_enabled
+        })
+      end
+
+      # PATCH /api/config/settings — update advanced settings
+      def api_update_settings(req, res)
+        body = parse_json_body(req)
+        return json_response(res, 400, { error: "Invalid JSON" }) unless body
+
+        if body.key?("enable_compression")
+          @agent_config.enable_compression = !!body["enable_compression"]
+        end
+        if body.key?("enable_prompt_caching")
+          @agent_config.enable_prompt_caching = !!body["enable_prompt_caching"]
+        end
+        if body.key?("memory_update_enabled")
+          @agent_config.memory_update_enabled = !!body["memory_update_enabled"]
+        end
+
+        @agent_config.save
+        json_response(res, 200, { ok: true })
+      rescue => e
+        json_response(res, 422, { error: e.message })
       end
 
       # POST /api/config — save updated model list
