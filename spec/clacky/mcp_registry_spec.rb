@@ -65,7 +65,7 @@ RSpec.describe Clacky::Mcp::Registry do
       sk = skills.first
       expect(sk).to be_a(Clacky::Mcp::VirtualSkill)
       expect(sk.identifier).to eq("mcp:fake")
-      expect(sk.slash_command).to eq("/mcp-fake")
+      expect(sk.slash_command).to eq("/mcp:fake")
       expect(sk.fork_agent?).to eq(true)
       expect(sk.user_invocable?).to eq(true)
       expect(sk.description).to eq("Hello.")

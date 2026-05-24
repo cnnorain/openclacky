@@ -72,12 +72,6 @@ module Clacky
         []
       end
 
-      def slash_command
-        # Identifier contains ":" which isn't a valid slug character — present
-        # the slash form with a hyphen instead.
-        "/mcp-#{@mcp_server_name}"
-      end
-
       # Override: there are no supporting files to list, no env vars to expand.
       # The content is fully synthesized at build time.
       def process_content(shell_output: {}, template_context: {}, script_dir: nil)

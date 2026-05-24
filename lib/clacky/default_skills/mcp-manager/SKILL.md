@@ -1,14 +1,10 @@
 ---
 name: mcp-manager
 description: |
-  Manage MCP (Model Context Protocol) servers for openclacky. Adds new servers, lists current ones,
-  probes their tool catalogs, removes them, and reconfigures broken ones. Talks the user through
-  the parameters they actually care about (paths, tokens) instead of asking them to write JSON.
-  Trigger on: "add mcp", "install mcp", "setup mcp", "configure mcp", "connect mcp",
-  "mcp setup", "mcp list", "mcp status", "mcp remove", "mcp delete", "mcp probe",
-  "mcp reconfigure", "mcp doctor", "I want clacky to read my files", "I want clacky to access github",
-  "添加 mcp", "配置 mcp", "安装 mcp server", "我想让 clacky 能读文件", "我想接 github".
-  Subcommands: add, list, probe <name>, remove <name>, reconfigure <name>.
+  Manage MCP (Model Context Protocol) servers for openclacky: add, list, probe, remove,
+  reconfigure. Edits ~/.clacky/mcp.json so the user never writes JSON by hand.
+  Trigger on: add mcp, install mcp, setup mcp, configure mcp, mcp list, mcp remove,
+  mcp probe, mcp reconfigure.
 argument-hint: "add | list | probe <name> | remove <name> | reconfigure <name>"
 allowed-tools:
   - Bash
