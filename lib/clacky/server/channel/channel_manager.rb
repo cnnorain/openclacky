@@ -49,27 +49,17 @@ module Clacky
       end
 
       # Start all enabled adapters in background threads. Non-blocking.
+      # NOTE: Plugin platforms are NOT started here - plugins manage their own connections.
+      # ChannelManager only starts built-in adapters (weixin, feishu, wecom, etc.)
       def start
         enabled_platforms = @channel_config.enabled_platforms
 
-        # Also include enabled plugin platforms
-        require_relative "../../plugin"
-        plugin_platforms = Clacky::Plugin.manager&.plugin_platforms || {}
-        plugin_platforms.each do |name, info|
-          # Check if plugin platform is enabled in plugin config
-          plugin_name = info[:plugin]&.name
-          plugin_config = Clacky::Plugin.manager&.get_plugin_config(plugin_name) || {}
-          if plugin_config[:enabled] != false && !enabled_platforms.include?(name.to_sym)
-            enabled_platforms << name.to_sym
-          end
-        end
-
         if enabled_platforms.empty?
-          Clacky::Logger.info("[ChannelManager] No channels configured — skipping")
+          Clacky::Logger.info("[ChannelManager] No built-in channels configured — skipping")
           return
         end
 
-        Clacky::Logger.info("[ChannelManager] Starting channels: #{enabled_platforms.join(", ")}")
+        Clacky::Logger.info("[ChannelManager] Starting built-in channels: #{enabled_platforms.join(", ")}")
         @running = true
         enabled_platforms.each { |platform| start_adapter(platform) }
       end
@@ -184,6 +174,15 @@ module Clacky
 
 
       def start_adapter(platform)
+        # Prevent duplicate adapters for the same platform
+        @mutex.synchronize do
+          existing = @adapters.find { |a| a.platform_id == platform }
+          if existing
+            Clacky::Logger.info("[ChannelManager] :#{platform} adapter already running — skipping duplicate")
+            return
+          end
+        end
+
         klass = Adapters.find(platform)
         plugin_platform = nil
 
