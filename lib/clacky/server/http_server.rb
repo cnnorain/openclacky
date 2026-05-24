@@ -416,6 +416,7 @@ module Clacky
         when ["GET",    "/api/memories"]  then api_memories_list(res)
         when ["POST",   "/api/memories"]  then api_memories_create(req, res)
         when ["GET",    "/api/channels"]          then api_list_channels(res)
+        when ["GET",    "/api/mcp"]               then api_mcp_list(res)
         when ["POST",   "/api/tool/browser"]      then api_tool_browser(req, res)
         when ["POST",   "/api/upload"]            then api_upload_file(req, res)
         when ["POST",   "/api/file-action"]       then api_file_action(req, res)
@@ -447,6 +448,17 @@ module Clacky
           elsif method == "DELETE" && path.start_with?("/api/channels/")
             platform = path.sub("/api/channels/", "")
             api_delete_channel(platform, res)
+          elsif method == "POST" && path.match?(%r{^/api/mcp/[^/]+/probe$})
+            name = path.sub("/api/mcp/", "").sub("/probe", "")
+            api_mcp_probe(name, res)
+          elsif method == "POST" && path == "/api/mcp"
+            api_mcp_create(req, res)
+          elsif method == "PUT" && path.match?(%r{^/api/mcp/[^/]+$})
+            name = path.sub("/api/mcp/", "")
+            api_mcp_update(name, req, res)
+          elsif method == "DELETE" && path.match?(%r{^/api/mcp/[^/]+$})
+            name = path.sub("/api/mcp/", "")
+            api_mcp_delete(name, req, res)
           elsif method == "GET" && path.match?(%r{^/api/sessions/[^/]+/skills$})
             session_id = path.sub("/api/sessions/", "").sub("/skills", "")
             api_session_skills(session_id, res)
@@ -1575,6 +1587,180 @@ module Clacky
         end
 
         json_response(res, 200, { channels: platforms })
+      end
+
+      # GET /api/mcp
+      # Lists configured MCP servers without spawning any subprocess. Honors
+      # both ~/.clacky/mcp.json (global) and project-level overrides.
+      def api_mcp_list(res)
+        registry = Clacky::Mcp::Registry.new(idle_timeout: 0)
+        global_path = File.join(Dir.home, ".clacky", "mcp.json")
+
+        servers = registry.servers.map do |name, spec|
+          type = (spec["type"] || (spec["url"] ? "http" : "stdio")).to_s
+          {
+            name:        name,
+            type:        type,
+            description: spec["description"] || "",
+            command:     spec["command"],
+            args:        Array(spec["args"]),
+            url:         spec["url"],
+            has_env:     spec["env"].is_a?(Hash) && !spec["env"].empty?,
+            has_headers: spec["headers"].is_a?(Hash) && !spec["headers"].empty?,
+          }
+        end
+
+        json_response(res, 200, {
+          configured:   registry.any?,
+          config_path:  global_path,
+          config_exists: File.exist?(global_path),
+          servers:      servers,
+        })
+      ensure
+        registry&.shutdown
+      end
+
+      # POST /api/mcp/:name/probe
+      # Spawns the MCP server briefly to fetch its tool catalog, then shuts it
+      # down. Used by the WebUI to display each server's tool list on demand.
+      # No state survives the request — the next agent run does its own lazy spawn.
+      def api_mcp_probe(name, res)
+        registry = Clacky::Mcp::Registry.new(idle_timeout: 0)
+        unless registry.configured?(name)
+          json_response(res, 404, { ok: false, error: "MCP server '#{name}' not found in mcp.json" })
+          return
+        end
+
+        skill = registry.virtual_skill_for(name)
+        tools = (skill&.tool_definitions || []).map do |defn|
+          fn = defn[:function] || defn["function"] || {}
+          {
+            name:        fn[:name] || fn["name"],
+            description: fn[:description] || fn["description"] || "",
+            input_schema: fn[:parameters] || fn["parameters"] || {},
+          }
+        end
+
+        json_response(res, 200, { ok: true, name: name, tools: tools, tool_count: tools.length })
+      rescue Clacky::Mcp::Client::McpError, Clacky::Mcp::Client::TransportError => e
+        json_response(res, 502, { ok: false, error: e.message })
+      rescue StandardError => e
+        json_response(res, 500, { ok: false, error: e.message })
+      ensure
+        registry&.shutdown
+      end
+
+      MCP_CONFIG_PATH = File.join(Dir.home, ".clacky", "mcp.json")
+
+      private def mcp_localhost_only(req, res)
+        ip = req.peeraddr.last rescue nil
+        return true if %w[127.0.0.1 ::1].include?(ip)
+
+        json_response(res, 403, { ok: false, error: "MCP write operations are only allowed from localhost" })
+        false
+      end
+
+      private def mcp_load_raw_config
+        return { "mcpServers" => {} } unless File.exist?(MCP_CONFIG_PATH)
+
+        data = JSON.parse(File.read(MCP_CONFIG_PATH))
+        data["mcpServers"] ||= data.delete("servers") || {}
+        data
+      rescue JSON::ParserError
+        { "mcpServers" => {} }
+      end
+
+      private def mcp_write_raw_config(data)
+        FileUtils.mkdir_p(File.dirname(MCP_CONFIG_PATH))
+        File.write(MCP_CONFIG_PATH, JSON.pretty_generate(data) + "\n")
+      end
+
+      private def mcp_validate_spec(body)
+        name = body["name"].to_s.strip
+        return [nil, nil, "name is required"]    if name.empty?
+        return [nil, nil, "name contains invalid characters"] unless name.match?(/\A[A-Za-z0-9_\-]+\z/)
+
+        type = (body["type"] || (body["url"] ? "http" : "stdio")).to_s
+        case type
+        when "stdio"
+          command = body["command"].to_s.strip
+          return [nil, nil, "command is required"] if command.empty?
+          spec = { "command" => command }
+          spec["args"] = Array(body["args"]).map(&:to_s) if body["args"]
+          spec["env"]  = body["env"].transform_values(&:to_s) if body["env"].is_a?(Hash)
+          spec["cwd"]  = body["cwd"].to_s if body["cwd"].is_a?(String) && !body["cwd"].empty?
+        when "http", "streamable-http"
+          url = body["url"].to_s.strip
+          return [nil, nil, "url is required for http type"] if url.empty?
+          return [nil, nil, "url must be http(s)"] unless url.match?(%r{\Ahttps?://}i)
+          spec = { "type" => "http", "url" => url }
+          spec["headers"] = body["headers"].transform_values(&:to_s) if body["headers"].is_a?(Hash)
+        else
+          return [nil, nil, "unsupported type '#{type}' (use stdio or http)"]
+        end
+
+        spec["description"] = body["description"].to_s if body["description"].is_a?(String) && !body["description"].empty?
+        [name, spec, nil]
+      end
+
+      # POST /api/mcp  { name, command, args[], env{}, cwd?, description? }
+      def api_mcp_create(req, res)
+        return unless mcp_localhost_only(req, res)
+
+        body = parse_json_body(req)
+        name, spec, err = mcp_validate_spec(body)
+        if err
+          json_response(res, 400, { ok: false, error: err })
+          return
+        end
+
+        data = mcp_load_raw_config
+        if data["mcpServers"].key?(name)
+          json_response(res, 409, { ok: false, error: "MCP server '#{name}' already exists. Use PUT to update." })
+          return
+        end
+
+        data["mcpServers"][name] = spec
+        mcp_write_raw_config(data)
+        json_response(res, 200, { ok: true, name: name, config_path: MCP_CONFIG_PATH })
+      end
+
+      # PUT /api/mcp/:name  { command, args[], env{}, cwd?, description? }
+      # Replaces the entire spec. Path :name wins over body name.
+      def api_mcp_update(name, req, res)
+        return unless mcp_localhost_only(req, res)
+
+        body = parse_json_body(req).merge("name" => name)
+        _, spec, err = mcp_validate_spec(body)
+        if err
+          json_response(res, 400, { ok: false, error: err })
+          return
+        end
+
+        data = mcp_load_raw_config
+        unless data["mcpServers"].key?(name)
+          json_response(res, 404, { ok: false, error: "MCP server '#{name}' not found" })
+          return
+        end
+
+        data["mcpServers"][name] = spec
+        mcp_write_raw_config(data)
+        json_response(res, 200, { ok: true, name: name })
+      end
+
+      # DELETE /api/mcp/:name
+      def api_mcp_delete(name, req, res)
+        return unless mcp_localhost_only(req, res)
+
+        data = mcp_load_raw_config
+        unless data["mcpServers"].key?(name)
+          json_response(res, 404, { ok: false, error: "MCP server '#{name}' not found" })
+          return
+        end
+
+        data["mcpServers"].delete(name)
+        mcp_write_raw_config(data)
+        json_response(res, 200, { ok: true, name: name })
       end
 
       # POST /api/channels/:platform/send

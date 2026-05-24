@@ -171,6 +171,18 @@
               </div>
             </div>
           </div>
+          <div id="mcp-sidebar-item" class="task-item task-item-summary">
+            <div class="task-row">
+              <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="task-icon">
+                <rect x="3" y="4" width="18" height="6" rx="1"/>
+                <rect x="3" y="14" width="18" height="6" rx="1"/>
+                <path d="M8 7h.01M8 17h.01"/>
+              </svg>
+              <div class="task-info">
+                <span class="task-name" id="mcp-sidebar-label" data-i18n="sidebar.mcp">MCP Servers</span>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
 
@@ -545,6 +557,19 @@
         </div>
 
         <div id="channels-list"></div>
+      </div>
+    </div>
+
+    <!-- ── MCP PANEL — read-only view of MCP servers from ~/.clacky/mcp.json ── -->
+    <div id="mcp-panel" style="display:none">
+      <div id="mcp-body">
+        <div class="channels-page-header">
+          <h2 class="channels-page-title" data-i18n="mcp.title">MCP Servers</h2>
+          <p class="channels-page-subtitle" data-i18n="mcp.subtitle">Standard Model Context Protocol servers (Claude Desktop / Cursor compatible). Edit ~/.clacky/mcp.json to add or remove servers.</p>
+        </div>
+
+        <div id="mcp-status" class="mcp-status"></div>
+        <div id="mcp-list"></div>
       </div>
     </div>
 
@@ -1079,6 +1104,7 @@
 <script src="/tasks.js"></script>
 <script src="/skills.js"></script>
 <script src="/channels.js"></script>
+<script src="/mcp.js"></script>
 <script src="/settings.js"></script>
 <script src="/billing.js"></script>
 <script src="/onboard.js"></script>
