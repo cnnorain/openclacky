@@ -120,8 +120,9 @@ module Clacky
       def refresh
         Clacky::Logger.info("[PluginManager] Refreshing plugin list...")
 
-        # Remember currently enabled plugins
+        # Remember currently enabled plugins and their modules
         previously_enabled = @loader.plugins.values.select(&:enabled).map(&:key)
+        Clacky::Logger.debug("[PluginManager] Previously enabled: #{previously_enabled.join(', ')}")
 
         # Rediscover plugins
         @loader.discover(force: true)
@@ -130,13 +131,17 @@ module Clacky
         # Clean up config entries for deleted plugins
         cleanup_stale_plugin_configs
 
-        # Load any newly discovered plugins (that aren't already enabled)
+        # Restore previously enabled plugins and load new ones
         enabled_plugins = get_enabled_plugins
         disabled_plugins = get_disabled_plugins
 
         @loader.plugins.each do |key, plugin|
-          # Skip already enabled plugins
-          next if previously_enabled.include?(key)
+          # Restore previously enabled plugins
+          if previously_enabled.include?(key)
+            plugin.enabled = true
+            Clacky::Logger.debug("[PluginManager] Restored enabled state for: #{key}")
+            next
+          end
 
           # Check persisted enabled state
           unless get_plugin_enabled_state(key)

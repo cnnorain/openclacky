@@ -19,6 +19,7 @@ module Clacky
       attr_reader :kind, :key, :path
       attr_reader :entry_file, :requires_env
       attr_reader :provides_tools, :provides_hooks
+      attr_reader :config_schema
 
       # Runtime state
       attr_reader :module_instance, :error
@@ -137,6 +138,7 @@ module Clacky
           @requires_env = Array(data["requires_env"] || [])
           @provides_tools = Array(data["provides_tools"] || data["tools"] || [])
           @provides_hooks = Array(data["provides_hooks"] || data["hooks"] || [])
+          @config_schema = data["config_schema"] || {}
 
           # Parse kind
           raw_kind = data["kind"] || "standalone"
@@ -151,12 +153,14 @@ module Clacky
           @version = "0.0.0"
           @kind = "standalone"
           @key = @name
+          @config_schema = {}
         rescue StandardError => e
           @error = "Failed to parse manifest: #{e.message}"
           @name = @path.basename.to_s
           @version = "0.0.0"
           @kind = "standalone"
           @key = @name
+          @config_schema = {}
         end
       end
     end

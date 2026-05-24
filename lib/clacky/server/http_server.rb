@@ -2116,7 +2116,8 @@ module Clacky
         end
 
         config = manager.get_plugin_config(plugin.name)
-        json_response(res, 200, { ok: true, config: config })
+        schema = plugin.config_schema || {}
+        json_response(res, 200, { ok: true, config: config, schema: schema })
       rescue StandardError => e
         json_response(res, 500, { ok: false, error: e.message })
       end
