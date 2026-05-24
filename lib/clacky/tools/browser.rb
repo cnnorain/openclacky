@@ -35,7 +35,7 @@ module Clacky
         Workflow: open → snapshot(interactive:true) → act(ref=...). New tab from `open` is auto-selected; only use `focus` to switch back to a previously-opened tab.
         snapshot: returns hierarchical a11y tree truncated to ~8KB. Use query="text" to seek, or offset=N to page.
         act kinds: click | dblclick | type | fill | press | hover | scroll | drag | select | wait | evaluate | click_at
-        evaluate: `js` is a function body, e.g. `return document.title` or `const x=...; return x;`. Result is JSON-encoded.
+        evaluate: `js` is a function body, e.g. `return document.title` or `const x=...; return x;` — result is JSON-encoded.
         screenshot: expensive — pass `ref` to capture one element instead of the whole page.
       DESC
       self.tool_category = "web"
