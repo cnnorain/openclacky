@@ -798,14 +798,17 @@ RSpec.describe Clacky::Server::HttpServer do
 
   describe "POST /api/config/test" do
     it "returns ok: true when connection succeeds" do
-      test_client = double("client")
-      allow(test_client).to receive(:test_connection).and_return({ success: true })
+      with_server(agent_config: agent_config) do |server|
+        mock_http = instance_double(Net::HTTP)
+        mock_response = instance_double(Net::HTTPSuccess, is_a?: true)
+        allow(mock_response).to receive(:is_a?).with(Net::HTTPSuccess).and_return(true)
 
-      factory_called = false
-      client_factory = -> { factory_called = true; double("main_client") }
-
-      with_server(agent_config: agent_config, client_factory: client_factory) do |server|
-        allow(Clacky::Client).to receive(:new).and_return(test_client)
+        allow(Net::HTTP).to receive(:new).and_return(mock_http)
+        allow(mock_http).to receive(:use_ssl=)
+        allow(mock_http).to receive(:open_timeout=)
+        allow(mock_http).to receive(:read_timeout=)
+        allow(mock_http).to receive(:verify_mode=)
+        allow(mock_http).to receive(:request).and_return(mock_response)
 
         payload = {
           model:            "test-model",
@@ -825,11 +828,15 @@ RSpec.describe Clacky::Server::HttpServer do
     end
 
     it "returns ok: false when connection fails" do
-      test_client = double("client")
-      allow(test_client).to receive(:test_connection).and_raise(StandardError, "Unauthorized")
-
       with_server(agent_config: agent_config) do |server|
-        allow(Clacky::Client).to receive(:new).and_return(test_client)
+        mock_http = instance_double(Net::HTTP)
+
+        allow(Net::HTTP).to receive(:new).and_return(mock_http)
+        allow(mock_http).to receive(:use_ssl=)
+        allow(mock_http).to receive(:open_timeout=)
+        allow(mock_http).to receive(:read_timeout=)
+        allow(mock_http).to receive(:verify_mode=)
+        allow(mock_http).to receive(:request).and_raise(StandardError, "Unauthorized")
 
         payload = {
           model:    "bad-model",
@@ -849,14 +856,21 @@ RSpec.describe Clacky::Server::HttpServer do
     end
 
     it "uses stored key when masked placeholder is sent" do
-      test_client = double("client")
-      allow(test_client).to receive(:test_connection).and_return({ success: true })
-
       with_server(agent_config: agent_config) do |server|
-        expect(Clacky::Client).to receive(:new) do |key, **|
-          # Should receive the real stored key, not the masked one
-          expect(key).to eq("sk-testkey1234567890abcd")
-          test_client
+        mock_http = instance_double(Net::HTTP)
+        mock_response = instance_double(Net::HTTPSuccess)
+        allow(mock_response).to receive(:is_a?).with(Net::HTTPSuccess).and_return(true)
+
+        allow(Net::HTTP).to receive(:new).and_return(mock_http)
+        allow(mock_http).to receive(:use_ssl=)
+        allow(mock_http).to receive(:open_timeout=)
+        allow(mock_http).to receive(:read_timeout=)
+        allow(mock_http).to receive(:verify_mode=)
+
+        # Verify the request uses the real stored key, not the masked one
+        expect(mock_http).to receive(:request) do |req|
+          expect(req["Authorization"]).to eq("Bearer sk-testkey1234567890abcd")
+          mock_response
         end
 
         payload = {
