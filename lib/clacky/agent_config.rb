@@ -202,6 +202,13 @@ module Clacky
 
       @default_working_dir = options[:default_working_dir] || ENV["CLACKY_WORKSPACE_DIR"]
 
+      # Per-session model name override. When set, #model_name returns this
+      # value instead of the current entry's "model" field. Used when the user
+      # selects a model from the provider's remote model list that differs from
+      # the configured model name. This is session-scoped so it survives restarts
+      # (persisted in session data) without mutating the shared @models array.
+      @session_model_name = options[:session_model_name]
+
       # Per-session virtual model overlay.
       # When set, #current_model returns a *merged* hash (the resolved @models
       # entry merged with this overlay) without mutating the shared @models
@@ -210,8 +217,7 @@ module Clacky
       # polluting the parent agent's shared @models hashes.
       # Keys honored: "api_key", "base_url", "model", "anthropic_format".
       # @return [Hash, nil]
-      @virtual_model_overlay = options[:virtual_model_overlay]
-    end
+      @virtual_model_overlay = options[:virtual_model_overlay]    end
 
     # Load configuration from file
     def self.load(config_file = CONFIG_FILE)
@@ -534,11 +540,18 @@ module Clacky
       end
     end
 
-    # Get model name for current model
-    def model_name
-      current_model&.dig("model")
-    end
+    # Getter/setter for session-level model name override.
+    # When set, #model_name returns this value instead of the current
+    # entry's "model" field. Used when the user picks a different model
+    # from the provider's remote model list in the session modal.
+    attr_accessor :session_model_name
 
+    # Get model name for current model.
+    # Returns the session-level override if set, otherwise falls back to
+    # the current model entry's "model" field (virtually overlaid if active).
+    def model_name
+      @session_model_name || current_model&.dig("model")
+    end
     # Set model name for current model (overlay-aware; see #api_key=).
     def model_name=(value)
       return unless resolve_current_model_entry

@@ -57,6 +57,9 @@ module Clacky
               next if model && record.model != model
               next if session_id && record.session_id != session_id
 
+              # Skip benchmark test records (system-generated latency probes with
+              # exactly 10 prompt + 20 completion tokens, no caching)
+              next if benchmark_record?(record)
               records << record
             rescue JSON::ParserError
               # Skip malformed lines
@@ -171,6 +174,15 @@ module Clacky
         Dir.glob(File.join(@billing_dir, "*.jsonl")).sort.reverse
       end
 
+      # Benchmark records are system-generated latency probes that send "hi" with
+      # max_tokens:16 to every configured model. They have a distinctive signature:
+      # exactly 10 prompt tokens + 20 completion tokens, and no caching activity.
+      private def benchmark_record?(record)
+        record.prompt_tokens == 10 &&
+          record.completion_tokens == 20 &&
+          record.cache_read_tokens.to_i == 0 &&
+          record.cache_write_tokens.to_i == 0
+      end
       private def period_start(period)
         now = Time.now
         case period

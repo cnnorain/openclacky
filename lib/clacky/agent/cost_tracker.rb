@@ -177,9 +177,9 @@ module Clacky
           cache_write: cache_write,
           cache_read: cache_read,
           cost: cost,
-          cost_source: @cost_source
-        }
-      end
+          cost_source: @cost_source,
+          model: current_model
+        }      end
     end
   end
 end

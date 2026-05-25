@@ -72,14 +72,20 @@ module Clacky
         # current default if the model was deleted/renamed since the session was
         # last saved.
         saved_model_name = session_data.dig(:config, :model_name)
+        saved_session_model_name = session_data.dig(:config, :session_model_name)
+
         if saved_model_name
           saved_base_url = session_data.dig(:config, :model_base_url)
           model_entry = @config.find_model_by_name_and_url(saved_model_name, saved_base_url)
           if model_entry && model_entry["id"]
+            # Apply any session-level model name override BEFORE switching
+            # so rebuild_client_for_current_model! picks up the correct name.
+            if saved_session_model_name && !saved_session_model_name.empty?
+              @config.session_model_name = saved_session_model_name
+            end
             switch_model_by_id(model_entry["id"])
           end
         end
-
         # Rebuild and refresh the system prompt so any newly installed skills
         # (or other configuration changes since the session was saved) are
         # reflected immediately — without requiring the user to create a new session.
@@ -137,8 +143,8 @@ module Clacky
             # composite key to avoid matching a different provider's model of
             # the same name. Falls back to default if the model no longer exists.
             model_name: @config.current_model&.dig("model"),
-            model_base_url: @config.current_model&.dig("base_url")
-          },
+            model_base_url: @config.current_model&.dig("base_url"),
+            session_model_name: @config.session_model_name          },
           stats: stats_data,
           messages: @history.to_a
         }

@@ -285,6 +285,102 @@ module Clacky
         ui_controller.append_output("")
       end
 
+      # Handle the `/model` slash command.
+      #
+      # Two-level interactive flow:
+      #   1. Show all configured model entries (providers) — user picks one
+      #   2. Fetch remote models from that provider's API — user picks a model
+      #   3. Switch the session to the selected model via switch_model_by_id_with_name
+      #
+      # Uses TTY::Prompt for clean terminal interaction. Falls back gracefully
+      # when the provider API is unreachable (shows the entry's own model name).
+      private def handle_model_command(ui_controller, agent_config, agent)
+        models = agent_config.models
+        if models.empty?
+          ui_controller.show_warning("No models configured. Use /config to add one.")
+          return
+        end
+
+        # Mark current model
+        current_id = agent_config.current_model_id
+
+        prompt = TTY::Prompt.new
+
+        # ── Level 1: Select provider (model entry) ───────────────────────
+        choices = models.map do |m|
+          name = m["model"] || "unnamed"
+          badge = case m["type"]
+                  when "default" then " [default]"
+                  when "lite" then " [lite]"
+                  else ""
+                  end
+          is_current = m["id"] == current_id
+          marker = is_current ? " ★" : ""
+          base = m["base_url"] ? " (#{m['base_url'].sub(%r{^https?://}, '')}/)" : ""
+          { name: "#{name}#{badge}#{marker}#{base}", value: m["id"] }
+        end
+
+        selected_id = prompt.select("Select provider:", choices, per_page: 20)
+        selected_entry = models.find { |m| m["id"] == selected_id }
+        return unless selected_entry
+
+        # If the user picked the already-active model entry, try fetching
+        # remote models so they can switch to a sibling model.
+        # If it's a different entry, fetch remote models too.
+        ui_controller.show_info("Fetching models from #{selected_entry['base_url'] || 'provider'}...")
+        ui_controller.append_output("")
+
+        remote = fetch_remote_models(selected_entry["base_url"], selected_entry["api_key"])
+
+        # ── Level 2: Select model ────────────────────────────────────────
+        if remote.empty?
+          # No remote models — just switch to the entry's configured model
+          agent.switch_model_by_id_with_name(selected_id)
+          ui_controller.show_success("Switched to model: #{agent_config.model_name}")
+          ui_controller.update_sessionbar(tasks: agent.total_tasks, cost: agent.total_cost)
+          return
+        end
+
+        model_choices = remote.map { |m| { name: m, value: m } }
+        selected_model = prompt.select("Select model for #{selected_entry['model']}:", model_choices, per_page: 20)
+        return unless selected_model
+
+        agent.switch_model_by_id_with_name(selected_id, selected_model)
+        ui_controller.show_success("Switched to model: #{agent_config.model_name}")
+        ui_controller.update_sessionbar(tasks: agent.total_tasks, cost: agent.total_cost)
+      end
+
+      # Fetch available models from an OpenAI-compatible endpoint.
+      # Returns a sorted array of model id strings, or empty on error.
+      private def fetch_remote_models(base_url, api_key)
+        return [] if base_url.to_s.strip.empty? || api_key.to_s.strip.empty?
+
+        uri = URI(base_url.sub(%r{/*$}, "") + "/models")
+        http = Net::HTTP.new(uri.host, uri.port)
+        http.use_ssl = uri.scheme == "https"
+        http.open_timeout = 10
+        http.read_timeout = 15
+
+        request = Net::HTTP::Get.new(uri)
+        request["Authorization"] = "Bearer #{api_key}"
+        request["Content-Type"] = "application/json"
+
+        response = http.request(request)
+        return [] unless response.is_a?(Net::HTTPSuccess)
+
+        payload = JSON.parse(response.body.to_s)
+        raw = payload["data"] || payload["models"] || []
+        raw.filter_map do |item|
+          if item.is_a?(Hash)
+            item["id"] || item["name"] || item["model"]
+          else
+            item.to_s
+          end
+        end.uniq.sort
+      rescue => e
+        # Silently fall back — caller shows the entry's own model
+        []
+      end
       private def handle_time_machine_command(ui_controller, agent, session_manager)
         # Get task history from agent
         history = agent.get_task_history(limit: 10)
@@ -613,6 +709,16 @@ module Clacky
           type = input["type"] || "message"
 
           case type
+          when "model"
+            provider_id = input["provider_id"]
+            model_name = input["model"]
+            if provider_id && model_name
+              agent.switch_model_by_id_with_name(provider_id, model_name)
+              json_ui.emit("success", message: "Switched to model: #{agent_config.model_name}")
+            else
+              handle_json_model_command(agent_config, agent, json_ui)
+            end
+            next
           when "message"
             content = input["content"].to_s.strip
             if content.empty?
@@ -633,8 +739,10 @@ module Clacky
               agent.instance_variable_set(:@ui, json_ui)
               json_ui.emit("info", message: "Session cleared. Starting fresh.")
               next
+            when "/model"
+              handle_json_model_command(agent_config, agent, json_ui)
+              next
             end
-
             files = input["files"] || []
             auto_name_session(agent, content)
             run_json_task(agent, json_ui, session_manager) { agent.run(content, files: files) }
@@ -668,6 +776,33 @@ module Clacky
         json_ui.set_idle_status
       end
 
+      # JSON mode "model" command handler (used both for `/model` text command
+      # and `{"type":"model"}` JSON input). Lists all configured providers with
+      # their current model info and IDs, plus IDs of any remote models fetched
+      # from each provider's API. The caller should send back
+      # `{"type":"model","provider_id":"...","model":"..."}` to switch.
+      private def handle_json_model_command(agent_config, agent, json_ui)
+        models = agent_config.models
+        if models.empty?
+          json_ui.emit("info", message: "No models configured. Use /config to add one.")
+          return
+        end
+
+        entries = models.map do |m|
+          remote = fetch_remote_models(m["base_url"], m["api_key"])
+          {
+            id: m["id"],
+            model: m["model"],
+            base_url: m["base_url"],
+            type: m["type"],
+            is_current: m["id"] == agent_config.current_model_id,
+            remote_models: remote
+          }
+        end
+
+        json_ui.emit("model_list", providers: entries)
+        json_ui.emit("info", message: "Send {\"type\":\"model\",\"provider_id\":\"<id>\",\"model\":\"<model>\"} to switch")
+      end
       # Run agent with UI2 split-screen interface
       def run_agent_with_ui2(agent, working_dir, agent_config, session_manager = nil, client_factory = nil, is_session_load: false)
         # Brand license check — must happen before UI2 starts (raw terminal mode conflict)
@@ -779,6 +914,9 @@ module Clacky
         ui_controller.on_input do |input, files, display: nil|
           # Handle commands
           case input.downcase.strip
+          when "/model"
+            handle_model_command(ui_controller, agent_config, agent)
+            next
           when "/config"
             handle_config_command(ui_controller, agent_config, agent)
             next

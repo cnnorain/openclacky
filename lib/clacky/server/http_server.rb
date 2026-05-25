@@ -10,6 +10,8 @@ require "tmpdir"
 require "uri"
 require "securerandom"
 require "timeout"
+require "net/http"
+require "openssl"
 require "yaml"
 require "date"
 require_relative "session_registry"
@@ -396,6 +398,7 @@ module Clacky
         when ["GET",    "/api/config/settings"]  then api_get_settings(res)
         when ["PATCH",  "/api/config/settings"]  then api_update_settings(req, res)
         when ["POST",   "/api/config/models"] then api_add_model(req, res)
+        when ["POST",   "/api/config/models/list"] then api_list_remote_models(req, res)
         when ["POST",   "/api/config/test"]   then api_test_config(req, res)
         when ["GET",    "/api/providers"]     then api_list_providers(res)
         when ["GET",    "/api/onboard/status"]    then api_onboard_status(res)
@@ -434,6 +437,7 @@ module Clacky
         when ["GET",    "/api/billing/summary"]   then api_billing_summary(req, res)
         when ["GET",    "/api/billing/daily"]     then api_billing_daily(req, res)
         when ["GET",    "/api/billing/records"]   then api_billing_records(req, res)
+        when ["DELETE", "/api/billing/clear"]     then api_billing_clear(res)
         when ["PATCH",  "/api/sessions/:id/model"] then api_switch_session_model(req, res)
         when ["PATCH",  "/api/sessions/:id/working_dir"] then api_change_session_working_dir(req, res)
         else
@@ -1157,6 +1161,18 @@ module Clacky
           records: records.map(&:to_h),
           count: records.size
         })
+      end
+
+      # DELETE /api/billing/clear
+      # Deletes all billing data files.
+      def api_billing_clear(res)
+        billing_dir = File.join(Dir.home, ".clacky", "billing")
+        deleted = 0
+        Dir.glob(File.join(billing_dir, "*.jsonl")).each do |f|
+          File.delete(f)
+          deleted += 1
+        end
+        json_response(res, 200, { deleted: deleted, message: "All billing data cleared" })
       end
 
       # GET /api/version
@@ -3179,6 +3195,7 @@ module Clacky
           {
             id:               m["id"],   # Stable runtime id — use this for switching
             index:            i,
+            provider_name:    m["provider_name"],
             model:            m["model"],
             base_url:         m["base_url"],
             api_key_masked:   mask_api_key(m["api_key"]),
@@ -3259,11 +3276,13 @@ module Clacky
 
         entry = {
           "id"               => SecureRandom.uuid,
+          "provider_name"    => body["provider_name"].to_s.strip,
           "model"            => model,
           "base_url"         => base_url,
           "api_key"          => api_key,
           "anthropic_format" => body["anthropic_format"] || false
         }
+        entry.delete("provider_name") if entry["provider_name"].empty?
         type = body["type"].to_s
         unless type.empty?
           # Preserve the single-slot "default" invariant.
@@ -3315,6 +3334,10 @@ module Clacky
         if body.key?("model")
           v = body["model"].to_s.strip
           target["model"] = v unless v.empty?
+        end
+        if body.key?("provider_name")
+          v = body["provider_name"].to_s.strip
+          v.empty? ? target.delete("provider_name") : target["provider_name"] = v
         end
         if body.key?("base_url")
           v = body["base_url"].to_s.strip
@@ -3400,12 +3423,13 @@ module Clacky
         json_response(res, 422, { error: e.message })
       end
 
-      # POST /api/config/test — test connection for a single model config
-      # Body: { model, base_url, api_key, anthropic_format }
+      # POST /api/config/test — test provider connection without requiring a model name
+      # Body: { base_url, api_key, index? }
       def api_test_config(req, res)
         body = parse_json_body(req)
         return json_response(res, 400, { error: "Invalid JSON" }) unless body
 
+        base_url = body["base_url"].to_s.strip.sub(%r{/*$}, "")
         api_key = body["api_key"].to_s
         # If masked, use the stored key from the matching model (by index or current)
         if api_key.include?("****")
@@ -3413,23 +3437,86 @@ module Clacky
           api_key = @agent_config.models.dig(idx, "api_key").to_s
         end
 
+        if base_url.empty? || api_key.empty?
+          return json_response(res, 200, { ok: false, message: "base_url and api_key are required" })
+        end
+
         begin
-          model = body["model"].to_s
-          test_client = Clacky::Client.new(
-            api_key,
-            base_url:         body["base_url"].to_s,
-            model:            model,
-            anthropic_format: body["anthropic_format"] || false
-          )
-          result = test_client.test_connection(model: model)
-          if result[:success]
+          uri = URI(base_url + "/models")
+          http = Net::HTTP.new(uri.host, uri.port)
+          http.use_ssl = uri.scheme == "https"
+          http.open_timeout = 10
+          http.read_timeout = 30
+          http.verify_mode = OpenSSL::SSL::VERIFY_PEER if http.use_ssl?
+
+          request = Net::HTTP::Get.new(uri)
+          request["Authorization"] = "Bearer #{api_key}"
+          request["Content-Type"] = "application/json"
+
+          response = http.request(request)
+          if response.is_a?(Net::HTTPSuccess)
             json_response(res, 200, { ok: true, message: "Connected successfully" })
           else
-            json_response(res, 200, { ok: false, message: result[:error].to_s })
+            json_response(res, 200, { ok: false, message: "#{response.code} #{response.message}" })
           end
         rescue => e
           json_response(res, 200, { ok: false, message: e.message })
         end
+      end
+
+      # POST /api/config/models/list — fetch available models from an OpenAI-compatible endpoint
+      # Body: { base_url, api_key, index? }
+      def api_list_remote_models(req, res)
+        body = parse_json_body(req)
+        return json_response(res, 400, { ok: false, error: "Invalid JSON" }) unless body
+
+        base_url = body["base_url"].to_s.strip.sub(%r{/*$}, "")
+        api_key  = body["api_key"].to_s
+
+        # If the UI sends a masked key while editing, reuse the stored key for that model.
+        if api_key.include?("****")
+          idx = body["index"]&.to_i || @agent_config.current_model_index
+          api_key = @agent_config.models.dig(idx, "api_key").to_s
+        end
+
+        if base_url.empty? || api_key.empty?
+          return json_response(res, 422, { ok: false, error: "base_url and api_key are required" })
+        end
+
+        uri = URI(base_url + "/models")
+        http = Net::HTTP.new(uri.host, uri.port)
+        http.use_ssl = uri.scheme == "https"
+        http.open_timeout = 10
+        http.read_timeout = 30
+        http.verify_mode = OpenSSL::SSL::VERIFY_PEER if http.use_ssl?
+
+        request = Net::HTTP::Get.new(uri)
+        request["Authorization"] = "Bearer #{api_key}"
+        request["Content-Type"] = "application/json"
+
+        response = http.request(request)
+        unless response.is_a?(Net::HTTPSuccess)
+          return json_response(res, 200, {
+            ok: false,
+            error: "#{response.code} #{response.message}"
+          })
+        end
+
+        payload = JSON.parse(response.body.to_s)
+        raw_models = payload["data"] || payload["models"] || []
+        models = raw_models.filter_map do |item|
+          if item.is_a?(Hash)
+            item["id"] || item["name"] || item["model"]
+          else
+            item.to_s
+          end
+        end.uniq.sort
+
+        json_response(res, 200, { ok: true, models: models })
+      rescue JSON::ParserError
+        json_response(res, 200, { ok: false, error: "Invalid /models response" })
+      rescue => e
+        json_response(res, 200, { ok: false, error: e.message })
       end
 
       # GET /api/providers — return built-in provider presets for quick setup
@@ -3537,9 +3624,16 @@ module Clacky
           return json_response(res, 400, { error: "Model not found in configuration" })
         end
 
-        # Switch to the model by id (unified interface with CLI)
-        # Handles: config.switch_model_by_id + client rebuild + message_compressor rebuild
-        success = agent.switch_model_by_id(model_id)
+        # Accept optional model_name override (e.g. user selected a different
+        # model from the provider's remote model list than the configured one).
+        # Apply it as a session-level override on the agent's config BEFORE
+        # switching, so rebuild_client_for_current_model! picks up the correct name.
+        model_name = body["model_name"].to_s.strip
+
+        # Switch to the model by id, optionally with a model name override
+        # Handles: config.switch_model_by_id + session_model_name + client rebuild + message_compressor rebuild
+        model_name_override = model_name.empty? ? nil : model_name
+        success = agent.switch_model_by_id_with_name(model_id, model_name_override)
 
         unless success
           return json_response(res, 500, { error: "Failed to switch model" })
@@ -3551,7 +3645,8 @@ module Clacky
         # Broadcast update to all clients
         broadcast_session_update(session_id)
 
-        json_response(res, 200, { ok: true, model_id: model_id, model: target_model["model"] })
+        effective_model = agent.config.model_name
+        json_response(res, 200, { ok: true, model_id: model_id, model: effective_model })
       rescue => e
         json_response(res, 500, { error: e.message })
       end

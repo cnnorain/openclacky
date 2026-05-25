@@ -128,6 +128,14 @@ RSpec.describe Clacky::CLI, "UI2 slash commands" do
     end
   end
 
+  # ── /model ─────────────────────────────────────────────────────────────────
+  describe "/model" do
+    it "delegates to handle_model_command" do
+      expect(cli).to receive(:handle_model_command).with(ui_controller, agent_config, agent)
+      send_input("/model")
+    end
+  end
+
   # ── /exit and /quit ────────────────────────────────────────────────────────
   describe "/exit" do
     it "stops the UI and exits" do

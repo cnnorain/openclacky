@@ -40,7 +40,7 @@ module Clacky
     include SkillReflector
     include SkillAutoCreator
 
-    attr_reader :session_id, :name, :history, :iterations, :total_cost, :working_dir, :created_at, :total_tasks, :todos,
+    attr_reader :session_id, :name, :history, :iterations, :total_cost, :working_dir, :created_at, :total_tasks, :todos, :config,
                 :cache_stats, :cost_source, :ui, :skill_loader, :agent_profile,
                 :status, :error, :updated_at, :source,
                 :latest_latency,  # Hash of latency metrics from the most recent LLM call (see Client#send_messages_with_tools)
@@ -172,6 +172,22 @@ module Clacky
       true
     end
 
+    # Switch to a model by id, optionally overriding the model name.
+    # When +model_name+ is provided (e.g. a different model from the same
+    # provider's remote list), it sets a session-level override on the config
+    # so that the client is rebuilt with the correct model name while keeping
+    # the selected entry's credentials (api_key, base_url, etc.).
+    # This is session-scoped — it does not mutate the shared @models array.
+    #
+    # @param id [String] The stable model entry id to switch to
+    # @param model_name [String, nil] Optional model name override
+    # @return [Boolean]
+    def switch_model_by_id_with_name(id, model_name = nil)
+      if model_name && !model_name.empty?
+        @config.session_model_name = model_name
+      end
+      switch_model_by_id(id)
+    end
     # Rebuild the underlying Client (and dependent components) to pick up
     # credentials/model name from the currently-selected model in @config.
     private def rebuild_client_for_current_model!
@@ -208,19 +224,17 @@ module Clacky
 
       {
         id: model["id"],
-        model: model["model"],
+        model: @config.model_name,
         base_url: model["base_url"]
       }
     end
-
     # Get current model name (respects any active fallback override)
     private def current_model
       @config.effective_model_name
     end
 
     # Rename this session. Called by auto-naming (first message) or user explicit rename.
-    def rename(new_name)
-      @name = new_name.to_s.strip
+    def rename(new_name)      @name = new_name.to_s.strip
     end
 
     def run(user_input, files: [])
