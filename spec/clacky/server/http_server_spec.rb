@@ -805,6 +805,7 @@ RSpec.describe Clacky::Server::HttpServer do
 
         allow(Net::HTTP).to receive(:new).and_return(mock_http)
         allow(mock_http).to receive(:use_ssl=)
+        allow(mock_http).to receive(:use_ssl?).and_return(true)
         allow(mock_http).to receive(:open_timeout=)
         allow(mock_http).to receive(:read_timeout=)
         allow(mock_http).to receive(:verify_mode=)
@@ -833,6 +834,7 @@ RSpec.describe Clacky::Server::HttpServer do
 
         allow(Net::HTTP).to receive(:new).and_return(mock_http)
         allow(mock_http).to receive(:use_ssl=)
+        allow(mock_http).to receive(:use_ssl?).and_return(true)
         allow(mock_http).to receive(:open_timeout=)
         allow(mock_http).to receive(:read_timeout=)
         allow(mock_http).to receive(:verify_mode=)
@@ -863,6 +865,7 @@ RSpec.describe Clacky::Server::HttpServer do
 
         allow(Net::HTTP).to receive(:new).and_return(mock_http)
         allow(mock_http).to receive(:use_ssl=)
+        allow(mock_http).to receive(:use_ssl?).and_return(true)
         allow(mock_http).to receive(:open_timeout=)
         allow(mock_http).to receive(:read_timeout=)
         allow(mock_http).to receive(:verify_mode=)
