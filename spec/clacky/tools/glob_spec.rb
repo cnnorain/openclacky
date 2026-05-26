@@ -271,6 +271,60 @@ RSpec.describe Clacky::Tools::Glob do
     end
   end
 
+  describe "broad-path guard" do
+    it "refuses to glob from filesystem root" do
+      result = tool.execute(pattern: "*.rb", base_path: "/")
+      expect(result[:error]).to include("Refusing to recursively glob")
+    end
+
+    it "refuses to glob from /root" do
+      allow(Dir).to receive(:exist?).and_call_original
+      allow(Dir).to receive(:exist?).with("/root").and_return(true)
+
+      result = tool.execute(pattern: "*.rb", base_path: "/root")
+      expect(result[:error]).to include("Refusing to recursively glob")
+    end
+
+    it "refuses to glob from a WSL drive mount (/mnt/c)" do
+      allow(Dir).to receive(:exist?).and_call_original
+      allow(Dir).to receive(:exist?).with("/mnt/c").and_return(true)
+
+      result = tool.execute(pattern: "*.rb", base_path: "/mnt/c")
+      expect(result[:error]).to include("Refusing to recursively glob")
+    end
+
+    it "still allows narrow project paths under /Users or /home" do
+      Dir.mktmpdir do |dir|
+        FileUtils.touch(File.join(dir, "ok.rb"))
+        result = tool.execute(pattern: "*.rb", base_path: dir)
+        expect(result[:error]).to be_nil
+      end
+    end
+  end
+
+  describe "walk budget" do
+    it "stops when max_dirs_visited is exceeded and reports truncation_reason" do
+      Dir.mktmpdir do |dir|
+        # Build a chain of 30 nested subdirs, each with a .rb file.
+        current = dir
+        30.times do |i|
+          current = File.join(current, "sub#{i}")
+          FileUtils.mkdir_p(current)
+          FileUtils.touch(File.join(current, "f#{i}.rb"))
+        end
+
+        # Force a tiny dir budget by stubbing the constant.
+        stub_const("Clacky::Utils::FileIgnoreHelper::MAX_DIRS_VISITED", 5)
+
+        result = tool.execute(pattern: "**/*.rb", base_path: dir, limit: 100)
+
+        expect(result[:error]).to be_nil
+        expect(result[:truncated]).to be true
+        expect(result[:truncation_reason]).to eq("max_dirs_visited")
+      end
+    end
+  end
+
   describe "#to_function_definition" do
     it "returns OpenAI function calling format" do
       definition = tool.to_function_definition

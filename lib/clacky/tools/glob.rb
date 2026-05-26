@@ -49,6 +49,14 @@ module Clacky
           return { error: "Base path does not exist: #{base_path}" }
         end
 
+        if Clacky::Utils::FileIgnoreHelper.dangerous_root?(base_path)
+          return {
+            error: "Refusing to recursively glob from broad path '#{base_path}'. " \
+                   "Narrow base_path to a specific subdirectory, " \
+                   "or use '.' to search the working directory."
+          }
+        end
+
         begin
           expanded_path = base_path
 
@@ -70,7 +78,8 @@ module Clacky
           fnmatch_flags = File::FNM_PATHNAME | File::FNM_DOTMATCH
 
           matches = []
-          Clacky::Utils::FileIgnoreHelper.walk_files(expanded_path, skipped: skipped) do |file|
+          walk_status = {}
+          Clacky::Utils::FileIgnoreHelper.walk_files(expanded_path, skipped: skipped, status: walk_status) do |file|
             relative = file[(expanded_path.length + 1)..]
 
             unless File.fnmatch(effective_pattern, relative, fnmatch_flags)
@@ -101,11 +110,13 @@ module Clacky
           # Convert to absolute paths
           matches = matches.map { |path| File.expand_path(path) }
 
+          walk_truncated = walk_status[:truncated] == true
           {
             matches: matches,
             total_matches: total_matches,
             returned: matches.length,
-            truncated: total_matches > limit,
+            truncated: total_matches > limit || walk_truncated,
+            truncation_reason: walk_status[:truncation_reason],
             skipped_files: skipped,
             error: nil
           }
@@ -129,9 +140,13 @@ module Clacky
           count = result[:returned] || 0
           total = result[:total_matches] || 0
           truncated = result[:truncated] ? " (truncated)" : ""
-          
+
           msg = "[OK] Found #{count}/#{total} files#{truncated}"
-          
+
+          if result[:truncation_reason]
+            msg += " [walk #{result[:truncation_reason]}]"
+          end
+
           # Add skipped files info if present
           if result[:skipped_files]
             skipped = result[:skipped_files]

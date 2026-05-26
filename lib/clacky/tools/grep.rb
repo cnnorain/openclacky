@@ -92,6 +92,14 @@ module Clacky
           return { error: "Path does not exist: #{path}" }
         end
 
+        if File.directory?(expanded_path) && Clacky::Utils::FileIgnoreHelper.dangerous_root?(expanded_path)
+          return {
+            error: "Refusing to recursively grep from broad path '#{path}'. " \
+                   "Narrow the path to a specific subdirectory, " \
+                   "or use '.' to search the working directory."
+          }
+        end
+
         # Limit context_lines
         context_lines = [[context_lines, 0].max, 10].min
 
@@ -115,9 +123,13 @@ module Clacky
                   else
                     fnmatch_flags = File::FNM_PATHNAME | File::FNM_DOTMATCH
                     collected = []
-                    Clacky::Utils::FileIgnoreHelper.walk_files(expanded_path, skipped: skipped) do |f|
+                    walk_status = {}
+                    Clacky::Utils::FileIgnoreHelper.walk_files(expanded_path, skipped: skipped, status: walk_status) do |f|
                       relative = f[(expanded_path.length + 1)..]
                       collected << f if File.fnmatch(file_pattern, relative, fnmatch_flags)
+                    end
+                    if walk_status[:truncated]
+                      truncation_reason ||= "walk #{walk_status[:truncation_reason]}"
                     end
                     collected
                   end

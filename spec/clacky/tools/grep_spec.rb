@@ -159,6 +159,42 @@ RSpec.describe Clacky::Tools::Grep do
     end
   end
 
+  describe "broad-path guard" do
+    it "refuses to grep from filesystem root" do
+      result = tool.execute(pattern: "anything", path: "/")
+      expect(result[:error]).to include("Refusing to recursively grep")
+    end
+
+    it "refuses to grep from /root" do
+      allow(File).to receive(:exist?).and_call_original
+      allow(File).to receive(:exist?).with("/root").and_return(true)
+      allow(File).to receive(:directory?).and_call_original
+      allow(File).to receive(:directory?).with("/root").and_return(true)
+
+      result = tool.execute(pattern: "anything", path: "/root")
+      expect(result[:error]).to include("Refusing to recursively grep")
+    end
+
+    it "still allows narrow project paths" do
+      Dir.mktmpdir do |dir|
+        File.write(File.join(dir, "a.txt"), "hello")
+        result = tool.execute(pattern: "hello", path: dir)
+        expect(result[:error]).to be_nil
+      end
+    end
+
+    it "still allows grep on a single file even if it lives under /etc" do
+      # File-mode grep should not trigger the directory broad-path guard.
+      Tempfile.create("grep_single") do |f|
+        f.write("needle\n")
+        f.flush
+        result = tool.execute(pattern: "needle", path: f.path)
+        expect(result[:error]).to be_nil
+        expect(result[:total_matches]).to eq(1)
+      end
+    end
+  end
+
   describe "#to_function_definition" do
     it "returns OpenAI function calling format" do
       definition = tool.to_function_definition
