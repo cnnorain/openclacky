@@ -101,6 +101,32 @@ RSpec.describe Clacky::Tools::Terminal do
       expect(result).to include(:error)
       expect(result[:error]).to match(/cwd/i)
     end
+
+    it "blocks multi-line commands and points the agent at write+bash" do
+      cmd = "cat <<'EOF'\nhello\nEOF"
+      result = tool.execute(command: cmd)
+      expect(result[:multiline_blocked]).to be(true)
+      expect(result[:error]).to match(/multi-line/i)
+      expect(result[:hint]).to match(/write.*bash/i)
+    end
+
+    it "blocks any command containing an embedded newline" do
+      result = tool.execute(command: "echo a\necho b")
+      expect(result[:multiline_blocked]).to be(true)
+    end
+
+    it "treats a trailing newline as still single-line" do
+      result = tool.execute(command: "echo hi\n")
+      expect(result[:multiline_blocked]).to be_nil
+      expect(result[:exit_code]).to eq(0)
+    end
+
+    it "allows long single-line commands chained with && or ;" do
+      result = tool.execute(command: "echo a && echo b ; echo c")
+      expect(result[:multiline_blocked]).to be_nil
+      expect(result[:exit_code]).to eq(0)
+      expect(result[:output].to_s).to include("a", "b", "c")
+    end
   end
 
   # ---------------------------------------------------------------------------
@@ -340,22 +366,17 @@ RSpec.describe Clacky::Tools::Terminal do
     end
 
     it "does NOT rewrite rm inside a heredoc body (regression: multi-line commands)" do
-      # A command that writes a heredoc whose body contains the word 'rm'
-      # must be executed as-is — not mangled by the old static rewriter,
-      # which would have treated the heredoc body tokens as rm targets.
-      Dir.mktmpdir do |dir|
-        script = File.join(dir, "heredoc_victim.txt")
-        cmd = <<~CMD
-          cat > #{script} <<'PYEOF'
-          this line mentions rm but must NOT be interpreted as a command
-          rm is just a word here
-          PYEOF
-        CMD
-        result = tool.execute(command: cmd, cwd: dir)
-        expect(result[:exit_code]).to eq(0)
-        expect(File.exist?(script)).to be(true)
-        expect(File.read(script)).to include("rm is just a word here")
-      end
+      # The Security layer must not treat heredoc body tokens as rm targets.
+      # Multi-line commands are now blocked at the tool entry, so we exercise
+      # the Security layer directly here.
+      cmd = <<~CMD
+        cat > /tmp/heredoc_victim.txt <<'PYEOF'
+        this line mentions rm but must NOT be interpreted as a command
+        rm is just a word here
+        PYEOF
+      CMD
+      safe = Clacky::Tools::Security.make_safe(cmd, project_root: Dir.pwd)
+      expect(safe).to eq(cmd.strip)
     end
 
     it "does NOT apply security rewriting to input (input is a reply, not a command)" do

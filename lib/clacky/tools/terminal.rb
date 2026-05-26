@@ -72,6 +72,9 @@ module Clacky
           {session_id, input:"pw\n"}      reply to prompt / poll (input:"")
           {session_id, kill:true}         stop
 
+        Single-line only. For multi-line scripts (heredoc, loops, multi-statement blocks)
+        write a file first, then run it: write(path:"/tmp/run.sh", content:...) → terminal(command:"bash /tmp/run.sh").
+
         Response: exit_code = done; session_id = running (state: waiting/background/timeout).
         If output exceeds the limit, `output` is truncated and `full_output_file` points
         at a file on disk — use terminal(command: "grep ... <path>") to search it.
@@ -228,6 +231,17 @@ module Clacky
 
         # Start a new command
         if command && !command.to_s.strip.empty?
+          if multiline_command?(command)
+            return {
+              error: "Multi-line commands are unreliable in our PTY shell " \
+                     "(heredocs / unclosed quotes / multi-line blocks can hang the session).",
+              hint: "Write the script to a file first, then execute it. " \
+                    "Example: 1) write(path: \"/tmp/run.sh\", content: \"...\")  " \
+                    "2) terminal(command: \"bash /tmp/run.sh\")",
+              multiline_blocked: true
+            }
+          end
+
           return do_start(command.to_s, cwd: cwd, env: env, timeout: timeout,
                           idle_ms: idle_ms, background: background ? true : false)
         end
@@ -1183,6 +1197,17 @@ module Clacky
         s = s.lstrip
 
         SLOW_COMMAND_PATTERNS.any? { |pat| s.include?(pat) }
+      end
+
+      # True when `command` spans multiple lines. Trailing newlines are
+      # ignored — a single-line command terminated with "\n" is still
+      # single-line. Multi-line commands frequently hang the persistent
+      # PTY shell (incomplete heredoc, unclosed quote, multi-line block
+      # without closer) — the agent should write a script file and
+      # invoke it instead.
+      private def multiline_command?(command)
+        return false if command.nil?
+        command.to_s.sub(/\n+\z/, "").include?("\n")
       end
 
       # Apply per-line truncation to a cleaned (post-OutputCleaner) string.
