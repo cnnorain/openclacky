@@ -901,6 +901,7 @@ RSpec.describe Clacky::Tools::Terminal do
     let(:terminal) { described_class.new }
     def call(cmd)
       terminal.send(:force_powershell_utf8, cmd)
+    end
 
     it "injects UTF-8 setup into -Command \"...\" form, preserving the rest" do
       out = call(%q{powershell.exe -Command "Get-NetIPAddress | Select-Object InterfaceAlias"})
