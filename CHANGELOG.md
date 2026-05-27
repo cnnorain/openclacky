@@ -5,6 +5,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.5] - 2026-05-28
+
+### Fixed
+- Bash tool stream output not rendering in real-time
+- Multi-line shell output being incorrectly stripped
+
+### More
+- Remove WSL2 network doctor script for better compatibility
+
 ## [1.2.4] - 2026-05-27
 
 ### Added
