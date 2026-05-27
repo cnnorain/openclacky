@@ -1066,10 +1066,16 @@ module Clacky
       #     whole persistent shell.
       def source_rc_in_session(session, rc_files)
         return if rc_files.empty?
-        cmd = rc_files.map { |f|
+        sources = rc_files.map { |f|
           escaped = f.gsub('"', '\"')
           "source \"#{escaped}\" || true"
         }.join("; ")
+        # rc files often gate interactive-only setup (mise activate, direnv
+        # hook, nvm, pyenv, oh-my-zsh) on `[ -z "$PS1" ]` / `[[ -o interactive ]]`.
+        # We normally keep PS1="" to suppress prompt noise in captured output,
+        # but that makes those gates fail when we re-source rc here. Set a
+        # placeholder PS1 just for the duration of the source, then restore "".
+        cmd = %Q{__clacky_old_ps1="$PS1"; PS1="__CLACKY_PS1__"; #{sources}; PS1="$__clacky_old_ps1"; unset __clacky_old_ps1}
         run_inline(session, cmd, timeout: 15)
       end
 
