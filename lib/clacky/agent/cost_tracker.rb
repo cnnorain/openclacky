@@ -135,11 +135,9 @@ module Clacky
         )
 
         billing_store.append(record)
-        Clacky::Logger.info("billing.record_saved", model: billing_model, cost: effective_cost, tokens: usage[:prompt_tokens].to_i + usage[:completion_tokens].to_i)
       rescue => e
         # Billing persistence is non-critical; log and continue
-        Clacky::Logger.error("billing.persist_error", error: e.message, model: billing_model)
-        @ui&.log("Failed to persist billing record: #{e.message}", level: :debug) if @config&.verbose
+        Clacky::Logger.warn("billing.persist_error", error: e.message, model: billing_model)
       end
 
       # Estimate token count for a message content
