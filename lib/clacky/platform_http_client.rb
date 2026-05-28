@@ -228,11 +228,16 @@ module Clacky
           h.request(req) do |resp|
             case resp.code.to_i
             when 200
+              expected_len = resp["content-length"]&.to_i
               File.open(dest, "wb") do |f|
                 resp.read_body do |chunk|
                   f.write(chunk)
                   written += chunk.bytesize
                 end
+              end
+              if expected_len && expected_len > 0 && written != expected_len
+                raise RetryableNetworkError,
+                      "Truncated download: got #{written} bytes, expected #{expected_len}"
               end
             when 301, 302, 303, 307, 308
               location = resp["location"]
