@@ -215,6 +215,7 @@ module Clacky
           if retries <= current_max
             if retries == RETRIES_BEFORE_FALLBACK && !@config.fallback_active?
               if try_activate_fallback(current_model)
+                api_call_model = current_model
                 retries = 0
                 retry
               end

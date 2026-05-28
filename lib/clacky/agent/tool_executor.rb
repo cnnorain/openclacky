@@ -397,6 +397,11 @@ module Clacky
           return { error: "File not found: #{path}", path: path }
         end
 
+        if File.directory?(expanded_path)
+          @ui&.show_file_error("Path is a directory, not a file: #{path}")
+          return { error: "Path is a directory, not a file: #{path}", path: path }
+        end
+
         if old_string.empty?
           @ui&.show_file_error("No old_string provided (nothing to replace)")
           return { error: "No old_string provided (nothing to replace)" }
