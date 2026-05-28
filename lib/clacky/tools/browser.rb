@@ -264,7 +264,7 @@ module Clacky
           url = require_url(opts)
           return url if url.is_a?(Hash)
           invalidate_page_cache!
-          mcp_call("navigate_page", { type: "url", url: url })
+          mcp_call("navigate_page", with_page({ type: "url", url: url }))
           wait_for_page_ready
           { action: "navigate", success: true, profile: "user", url: url, output: "Navigated to: #{url}" }
 
