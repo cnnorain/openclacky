@@ -108,6 +108,15 @@ module Clacky
           preview_error
         rescue JSON::ParserError
           nil
+        rescue StandardError => e
+          @debug_logs << {
+            timestamp: Time.now.iso8601,
+            event: "tool_preview_error",
+            tool_name: call[:name],
+            error_class: e.class.name,
+            error_message: e.message
+          }
+          nil
         end
       end
 
