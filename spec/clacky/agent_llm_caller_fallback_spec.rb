@@ -17,7 +17,7 @@ RSpec.describe Clacky::Agent, "fallback model integration" do
         {
           "type"             => "default",
           "model"            => primary_model,
-          "api_key"          => "absk-test",
+          "api_key"          => "clacky-test-key",
           "base_url"         => "https://api.clacky.ai/v1",
           "anthropic_format" => true
         }
@@ -28,7 +28,7 @@ RSpec.describe Clacky::Agent, "fallback model integration" do
 
   let(:client) do
     instance_double(Clacky::Client).tap do |c|
-      c.instance_variable_set(:@api_key, "absk-test")
+      c.instance_variable_set(:@api_key, "clacky-test-key")
       allow(c).to receive(:bedrock?).and_return(false)
       allow(c).to receive(:anthropic_format?).and_return(true)
       allow(c).to receive(:supports_prompt_caching?).and_return(false)

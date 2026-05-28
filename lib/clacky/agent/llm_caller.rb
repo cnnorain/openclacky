@@ -88,6 +88,11 @@ module Clacky
         # the error propagate.
         context_overflow_retry_attempted = false
 
+        # Capture model name at API call time for accurate billing tracking.
+        # If the user switches models while the API call is in progress, we still
+        # want to bill under the model that actually handled the request.
+        api_call_model = current_model
+
         begin
           begin
           # Use active_messages (Time Machine) when undone, otherwise send full history.
@@ -100,7 +105,7 @@ module Clacky
 
           response = @client.send_messages_with_tools(
             messages_to_send,
-            model: current_model,
+            model: api_call_model,
             tools: tools_to_send,
             max_tokens: @config.max_tokens,
             enable_caching: @config.enable_prompt_caching,
@@ -299,7 +304,9 @@ module Clacky
         end
 
         # Track cost and collect token usage data.
-        token_data = track_cost(response[:usage], raw_api_usage: response[:raw_api_usage])
+        # Pass the model name captured at API call time to ensure accurate billing
+        # even if the user switched models during the (potentially long) API call.
+        token_data = track_cost(response[:usage], raw_api_usage: response[:raw_api_usage], model: api_call_model)
         response[:token_usage] = token_data
 
         # [DIAG] Log raw client response shape. Only emit when we see the
