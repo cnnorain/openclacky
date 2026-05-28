@@ -129,8 +129,22 @@ module Clacky
           # block below handles retry + fallback identically to 5xx/429.
           detect_upstream_truncation!(response)
 
+          # Empty response detector: model returned nothing (no content, no
+          # tool_calls, finish_reason != "stop"). DeepSeek via OpenRouter
+          # occasionally does this. Treat as transient failure and retry.
+          if response[:content].to_s.strip.empty? &&
+              (response[:tool_calls].nil? || response[:tool_calls].empty?) &&
+              response[:finish_reason].to_s != "stop" &&
+              response[:finish_reason].to_s != "length"
+            Clacky::Logger.warn("llm.empty_response_detected",
+              model: api_call_model,
+              finish_reason: response[:finish_reason].to_s,
+              completion_tokens: response.dig(:token_usage, :completion_tokens)
+            )
+            raise RetryableError, "[LLM] Model returned empty response (no content, no tool_calls), retrying..."
+          end
+
         rescue Faraday::TimeoutError => e
-          # ── Read-timeout path (distinct from connection-level failures) ──
           # Faraday::TimeoutError on our non-streaming POST almost always means
           # the *response* took longer than the 300s read-timeout to come back —
           # i.e. the model is trying to produce a huge output in one shot
