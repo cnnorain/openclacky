@@ -232,8 +232,8 @@ module Clacky
         "name" => "Anthropic (Claude)",
         "base_url" => "https://api.anthropic.com",
         "api" => "anthropic-messages",
-        "default_model" => "claude-sonnet-4.6",
-        "models" => ["claude-opus-4-7", "claude-opus-4-6", "claude-sonnet-4.6", "claude-haiku-4.5"],
+        "default_model" => "claude-sonnet-4-6",
+        "models" => ["claude-opus-4-7", "claude-opus-4-6", "claude-sonnet-4-6", "claude-haiku-4-5"],
         "website_url" => "https://console.anthropic.com/settings/keys"
       }.freeze,
 
