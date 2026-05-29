@@ -172,6 +172,18 @@ module Clacky
       true
     end
 
+    # Pin this session to a sub-model name without changing its underlying
+    # card (credentials / base_url stay put). Pass nil or "" to clear and
+    # fall back to the card's default model. Validation that the name is
+    # listed under the current provider is the caller's job.
+    # @param model_name [String, nil]
+    # @return [Boolean]
+    def set_session_sub_model(model_name)
+      @config.session_model_overlay = model_name
+      rebuild_client_for_current_model!
+      true
+    end
+
     # Rebuild the underlying Client (and dependent components) to pick up
     # credentials/model name from the currently-selected model in @config.
     private def rebuild_client_for_current_model!
@@ -206,10 +218,16 @@ module Clacky
       model = @config.current_model
       return nil unless model
 
+      card_id = @config.current_model_id
+      base_entry = card_id ? @config.models.find { |m| m["id"] == card_id } : nil
+      sub_model = @config.session_model_overlay_name
+
       {
         id: model["id"],
         model: model["model"],
-        base_url: model["base_url"]
+        base_url: model["base_url"],
+        card_model: base_entry&.dig("model"),
+        sub_model: sub_model
       }
     end
 
