@@ -1019,7 +1019,10 @@ module Clacky
       check_stale!
 
       formatted_messages = @client.format_tool_results(response, tool_results, model: current_model)
-      formatted_messages.each { |msg| @history.append(msg.merge(task_id: @current_task_id)) }
+      formatted_messages.each do |msg|
+        truncated = truncate_oversized_tool_content(msg)
+        @history.append(truncated.merge(task_id: @current_task_id))
+      end
 
       # Append a follow-up `role:"user"` message for any image payloads that
       # could not be delivered inside the tool message.
@@ -1053,6 +1056,26 @@ module Clacky
           task_id:          @current_task_id
         })
       end
+    end
+
+    # Cap oversized tool result content to keep a single tool message from
+    # blowing up the prompt budget (issue #218: a 7350-path glob produced a
+    # ~890k-char result that pushed history past the model context window
+    # and poisoned the session). Only string content is truncated — Array
+    # content (multipart/image blocks) is left alone since image payloads
+    # are handled by the image_inject path above.
+    MAX_TOOL_RESULT_CHARS = 80_000
+
+    private def truncate_oversized_tool_content(msg)
+      content = msg[:content]
+      return msg unless content.is_a?(String) && content.length > MAX_TOOL_RESULT_CHARS
+
+      original_len = content.length
+      head = content[0, MAX_TOOL_RESULT_CHARS]
+      truncated = head + "\n\n[Tool result truncated: #{original_len} chars total, " \
+        "showing first #{MAX_TOOL_RESULT_CHARS}. Use a more specific query/limit, " \
+        "or read the raw output via file_reader/grep on the underlying source.]"
+      msg.merge(content: truncated)
     end
 
     # Enqueue an inline skill injection to be flushed after observe().
