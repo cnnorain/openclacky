@@ -301,12 +301,7 @@ module Clacky
         end
       end
 
-      unless response.status == 200
-        recovered_body = response.body.to_s
-        recovered_body = sse_buf.to_s if recovered_body.empty?
-        recovered = Struct.new(:status, :body).new(response.status, recovered_body)
-        raise_error(recovered)
-      end
+      raise_error(response) unless response.status == 200
       MessageFormat::Anthropic.parse_response(aggregator.to_h)
     end
 
