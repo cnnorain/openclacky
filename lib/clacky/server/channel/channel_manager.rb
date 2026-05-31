@@ -234,7 +234,7 @@ module Clacky
         return if (text.nil? || text.empty?) && files.empty?
 
         # Handle built-in commands
-        if text&.start_with?("/")
+        if text&.match?(KNOWN_COMMAND) || text&.match?(/\A([\?h]|help)\z/i)
           handle_command(adapter, event, text)
           return
         end
@@ -249,7 +249,8 @@ module Clacky
           return
         end
 
-        Clacky::Logger.info("[ChannelManager] Routing to session #{session_id[0, 8]} (status=#{session[:status]})")
+        sub_count = web_ui_for_session_diag(session_id)
+        Clacky::Logger.info("[ChannelManager] Routing to session #{session_id[0, 8]} (status=#{session[:status]}, text=#{text.inspect}, channel_subs=#{sub_count})")
 
         # If session is running, interrupt it automatically (mimics CLI behavior)
         if session[:status] == :running
@@ -283,7 +284,12 @@ module Clacky
 
         @run_agent_task.call(session_id, agent) do
           begin
+            Clacky::Logger.info("[ChannelManager] agent.run START session=#{session_id[0, 8]} text=#{text.inspect}")
             agent.run(text, files: files)
+            Clacky::Logger.info("[ChannelManager] agent.run END   session=#{session_id[0, 8]} text=#{text.inspect}")
+          rescue StandardError => e
+            Clacky::Logger.error("[ChannelManager] agent.run RAISED session=#{session_id[0, 8]} #{e.class}: #{e.message}\n#{e.backtrace.first(8).join("\n")}")
+            raise
           ensure
             adapter.stop_typing_keepalive(chat_id) if adapter.respond_to?(:stop_typing_keepalive)
           end
@@ -295,11 +301,24 @@ module Clacky
         key     = channel_key(event)
 
         case text
+        when /\A([\?h]|help)\z/i
+          adapter.send_text(chat_id, COMMAND_HELP)
+
+        when "/new", "/clear"
+          session_id = auto_create_session(adapter, event)
+          adapter.send_text(chat_id, "New session `#{session_id[0, 8]}` created.") if session_id
+
+        when /\A\/model\b/i
+          handle_model_command(adapter, event, text)
+
+        when /\A\/skills\b/i
+          handle_skills_command(adapter, event)
+
         when /\A\/bind\s+(\S+)\z/i
           arg = Regexp.last_match(1)
           # Support numeric index from /list (1-based)
           session_id = if arg =~ /\A\d+\z/
-            recent = @registry.list.last(5).reverse
+            recent = @registry.list.first(5)
             idx = arg.to_i - 1
             recent[idx]&.fetch(:id, nil)
           else
@@ -351,7 +370,9 @@ module Clacky
           session_id = resolve_session(event)
           if session_id
             session = @registry.get(session_id)
-            adapter.send_text(chat_id, "Bound to session `#{session_id[0, 8]}` (status: #{session&.dig(:status) || "unknown"})")
+            model = session&.dig(:agent)&.current_model_info
+            model_name = model&.dig(:model) || "unknown"
+            adapter.send_text(chat_id, "Bound to session `#{session_id[0, 8]}` (status: #{session&.dig(:status) || "unknown"}, model: #{model_name})")
           else
             adapter.send_text(chat_id, "No session bound yet. Send any message to auto-create one.")
           end
@@ -360,14 +381,116 @@ module Clacky
           list_sessions(adapter, chat_id)
 
         else
-          adapter.send_text(chat_id,
-            "Commands:\n" \
-            "  /bind <n|session_id> - switch to a session (use /list to see numbers)\n" \
-            "  /unbind - remove binding\n" \
-            "  /stop - interrupt current task\n" \
-            "  /status - show current binding\n" \
-            "  /list - show recent sessions")
+          adapter.send_text(chat_id, "Unknown command. Type ? for help.")
         end
+      end
+
+      KNOWN_COMMAND = %r{\A/(new|clear|model|skills|bind|stop|unbind|status|list)\b}i
+
+      COMMAND_HELP = <<~HELP.strip
+        Commands:
+          ? / h / help - show this help
+          /new / /clear - start a new session
+          /model - show current model & available models
+          /model <n> - switch to model n
+          /skills - list available skills
+          /<skill> <args> - invoke a skill directly
+          /bind <n|session_id> - switch to a session (use /list to see numbers)
+          /unbind - remove binding
+          /stop - interrupt current task
+          /status - show current binding
+          /list - show recent sessions
+      HELP
+
+      def handle_model_command(adapter, event, text)
+        chat_id   = event[:chat_id]
+        session_id = resolve_session(event)
+
+        unless session_id
+          adapter.send_text(chat_id, "No session bound. Send any message to auto-create one first.")
+          return
+        end
+
+        session = @registry.get(session_id)
+        agent = session&.dig(:agent)
+        unless agent
+          adapter.send_text(chat_id, "Session not ready.")
+          return
+        end
+
+        arg = text.sub(/\A\/model\s*/i, "").strip
+
+        if arg.empty?
+          # Show current model and available list
+          info = agent.current_model_info
+          current = info&.dig(:model) || "unknown"
+          sub     = info&.dig(:sub_model)
+          card    = info&.dig(:card_model)
+          header  = "Current model: #{current}"
+          header += " (#{card} · #{sub})" if card && sub && sub != current
+          header += " (#{card})" if card && !sub
+
+          models = agent.available_models
+          if models.empty?
+            adapter.send_text(chat_id, "#{header}\nNo other models available.")
+            return
+          end
+
+          lines = models.each_with_index.map do |name, i|
+            marker = name == current ? " *" : ""
+            "#{i + 1}. #{name}#{marker}"
+          end
+          adapter.send_text(chat_id, "#{header}\n\nSwitch with /model <n>:\n#{lines.join("\n")}")
+        elsif arg =~ /\A\d+\z/
+          idx = arg.to_i - 1
+          models = agent.config.models
+          if idx < 0 || idx >= models.length
+            adapter.send_text(chat_id, "Invalid model number. Use /model to see available models.")
+            return
+          end
+
+          model_id = models[idx]["id"]
+          if agent.switch_model_by_id(model_id)
+            new_info = agent.current_model_info
+            adapter.send_text(chat_id, "Switched to #{new_info&.dig(:model) || model_id}.")
+          else
+            adapter.send_text(chat_id, "Failed to switch model.")
+          end
+        else
+          adapter.send_text(chat_id, "Usage: /model to list, /model <n> to switch.")
+        end
+      end
+
+      def handle_skills_command(adapter, event)
+        chat_id    = event[:chat_id]
+        session_id = resolve_session(event)
+
+        unless session_id
+          adapter.send_text(chat_id, "No session bound. Send any message to auto-create one first.")
+          return
+        end
+
+        session = @registry.get(session_id)
+        agent = session&.dig(:agent)
+        unless agent
+          adapter.send_text(chat_id, "Session not ready.")
+          return
+        end
+
+        skills = agent.skill_loader.user_invocable_skills
+          .reject { |s| s.source == :default }
+          .first(10)
+        if skills.empty?
+          adapter.send_text(chat_id, "No skills available.")
+          return
+        end
+
+        lines = skills.each_with_index.map do |s, i|
+          desc = s.description.to_s.strip
+          desc = desc.empty? ? "(no description)" : desc.length > 50 ? "#{desc[0..49]}..." : desc
+          "#{i + 1}. #{s.name} - #{desc}"
+        end
+        adapter.send_text(chat_id, "Skills:\n#{lines.join("\n")}")
       end
 
       def resolve_session(event)
@@ -411,6 +534,19 @@ module Clacky
         result
       end
 
+      def web_ui_for_session_diag(session_id)
+        result = nil
+        @registry.with_session(session_id) do |s|
+          ui = s[:ui]
+          result = if ui.respond_to?(:channel_subscribed?)
+            ui.instance_variable_get(:@channel_subscribers)&.size || 0
+          else
+            -1
+          end
+        end
+        result
+      end
+
       def bind_key_to_session(key, session_id)
         @registry.list.each do |summary|
           @registry.with_session(summary[:id]) { |s| s[:channel_keys]&.delete(key) }
@@ -422,7 +558,7 @@ module Clacky
       end
 
       def list_sessions(adapter, chat_id)
-        sessions = @registry.list.last(5).reverse
+        sessions = @registry.list.first(5)
         if sessions.empty?
           adapter.send_text(chat_id, "No sessions available.")
           return
