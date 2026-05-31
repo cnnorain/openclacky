@@ -117,7 +117,7 @@ module Clacky
       puts_line("[warn] #{message}")
     end
 
-    def show_error(message)
+    def show_error(message, code: nil, top_up_url: nil)
       puts_line("[error] #{message}")
     end
 

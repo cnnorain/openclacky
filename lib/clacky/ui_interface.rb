@@ -26,7 +26,7 @@ module Clacky
     # === Status messages ===
     def show_info(message, prefix_newline: true); end
     def show_warning(message); end
-    def show_error(message); end
+    def show_error(message, code: nil, top_up_url: nil); end
     def show_success(message); end
     def log(message, level: :info); end
 

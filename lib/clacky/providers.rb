@@ -549,6 +549,11 @@ module Clacky
           return "openclacky"
         end
 
+        if base_url.is_a?(String) &&
+           base_url.match?(%r{\Ahttps?://(localhost|127\.0\.0\.1|0\.0\.0\.0)(:|/|\z)}i)
+          return "openclacky"
+        end
+
         nil
       end
 

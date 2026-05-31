@@ -210,9 +210,12 @@ module Clacky
         forward_to_subscribers { |sub| sub.show_warning(message) }
       end
 
-      def show_error(message)
-        emit("error", message: message)
-        forward_to_subscribers { |sub| sub.show_error(message) }
+      def show_error(message, code: nil, top_up_url: nil)
+        payload = { message: message }
+        payload[:code] = code if code
+        payload[:top_up_url] = top_up_url if top_up_url
+        emit("error", **payload)
+        forward_to_subscribers { |sub| sub.show_error(message, code: code, top_up_url: top_up_url) }
       end
 
       def show_success(message)

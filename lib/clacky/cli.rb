@@ -559,7 +559,8 @@ module Clacky
         else
           error_message = format_error(exception)
           session_manager&.save(agent.to_session_data(status: :error, error_message: error_message))
-          ui_controller.show_error("Error: #{exception.message}")
+          code = exception.is_a?(Clacky::InsufficientCreditError) ? exception.error_code : nil
+          ui_controller.show_error("Error: #{exception.message}", code: code)
         end
       end
 

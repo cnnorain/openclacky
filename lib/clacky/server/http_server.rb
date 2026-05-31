@@ -4233,12 +4233,18 @@ module Clacky
           broadcast(session_id, { type: "interrupted", session_id: session_id })
           @session_manager.save(agent.to_session_data(status: :interrupted))
         rescue => e
-          @registry.update(session_id, status: :error, error: e.message)
-          broadcast_session_update(session_id)
           # Route error through web_ui so channel subscribers (飞书/企微) receive it too.
           web_ui = nil
           @registry.with_session(session_id) { |s| web_ui = s[:ui] }
-          web_ui&.show_error(e.message)
+          code = e.is_a?(Clacky::InsufficientCreditError) ? e.error_code : nil
+          top_up_url = nil
+          if e.is_a?(Clacky::InsufficientCreditError) && e.provider_id
+            preset = Clacky::Providers::PRESETS[e.provider_id]
+            top_up_url = preset && preset["website_url"]
+          end
+          @registry.update(session_id, status: :error, error: e.message, error_code: code, top_up_url: top_up_url)
+          broadcast_session_update(session_id)
+          web_ui&.show_error(e.message, code: code, top_up_url: top_up_url)
           @session_manager.save(agent.to_session_data(status: :error, error_message: e.message))
         end
         @registry.with_session(session_id) { |s| s[:thread] = thread }

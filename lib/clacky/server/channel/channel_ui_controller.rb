@@ -145,8 +145,10 @@ module Clacky
         send_text("Warning: #{message}")
       end
 
-      def show_error(message)
-        send_text("Error: #{message}")
+      def show_error(message, code: nil, top_up_url: nil)
+        text = "Error: #{message}"
+        text += "\n#{top_up_url}" if top_up_url
+        send_text(text)
       end
 
       def show_success(message)

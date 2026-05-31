@@ -541,12 +541,22 @@ module Clacky
     def raise_error(response)
       error_body    = JSON.parse(response.body) rescue nil
       error_message = extract_error_message(error_body, response.body)
+      error_code    = extract_error_code(error_body)
 
       Clacky::Logger.warn("client.raise_error",
         status: response.status,
         body: response.body.to_s[0, 2000],
-        error_message: error_message.to_s[0, 500]
+        error_message: error_message.to_s[0, 500],
+        error_code: error_code
       )
+
+      if error_code == "insufficient_credit" || response.status == 402
+        raise InsufficientCreditError.new(
+          "[LLM] Insufficient credit: #{error_message}",
+          error_code: "insufficient_credit",
+          provider_id: @provider_id
+        )
+      end
 
       case response.status
       when 400
@@ -562,7 +572,6 @@ module Clacky
         # broken message is not replayed on the next user turn.
         raise BadRequestError, "[LLM] Client request error: #{error_message}"
       when 401 then raise AgentError, "[LLM] Invalid API key"
-      when 402 then raise AgentError, "[LLM] Billing or payment issue (possibly out of credits): #{error_message}"
       when 403 then raise AgentError, "[LLM] Access denied: #{error_message}"
       when 404 then raise AgentError, "[LLM] API endpoint not found: #{error_message}"
       when 429 then raise RetryableError, "[LLM] Rate limit exceeded, please wait a moment"
@@ -577,6 +586,13 @@ module Clacky
       if body.start_with?("<!DOCTYPE", "<!doctype", "<html", "<HTML")
         raise RetryableError, "[LLM] Service temporarily unavailable (received HTML error page), retrying..."
       end
+    end
+
+    private def extract_error_code(error_body)
+      return nil unless error_body.is_a?(Hash)
+      err = error_body["error"]
+      return err["code"] if err.is_a?(Hash) && err["code"].is_a?(String)
+      nil
     end
 
     def extract_error_message(error_body, raw_body)

@@ -174,15 +174,21 @@ RSpec.describe Clacky::Providers do
              )).to eq("openclacky")
     end
 
-    it "returns nil when base_url is unknown and api_key is not a clacky-* key" do
+    it "treats localhost / 127.0.0.1 / 0.0.0.0 as openclacky regardless of api_key (local-proxy debug)" do
       expect(described_class.resolve_provider(
                base_url: "http://localhost:9999", api_key: "sk-generic"
-             )).to be_nil
+             )).to eq("openclacky")
       expect(described_class.resolve_provider(
-               base_url: "http://localhost:9999", api_key: nil
-             )).to be_nil
+               base_url: "http://127.0.0.1:8080", api_key: nil
+             )).to eq("openclacky")
       expect(described_class.resolve_provider(
-               base_url: "http://localhost:9999", api_key: ""
+               base_url: "http://0.0.0.0:3100/v1", api_key: ""
+             )).to eq("openclacky")
+    end
+
+    it "returns nil when base_url is an unknown public host and api_key is not clacky-*" do
+      expect(described_class.resolve_provider(
+               base_url: "https://example.com/v1", api_key: "sk-generic"
              )).to be_nil
     end
 

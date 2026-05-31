@@ -201,10 +201,10 @@ RSpec.describe Clacky::Agent, "#fork_subagent" do
       end
 
       it "falls back to the current model when no lite is resolvable" do
-        # Use a self-hosted base_url AND a non-clacky api_key: no provider
-        # can be resolved, so lite_model_config_for_current returns nil and
-        # the subagent just inherits the primary.
-        config.models.first["base_url"] = "http://localhost:9999"
+        # Use a non-local, unknown base_url AND a non-clacky api_key: no
+        # provider can be resolved, so lite_model_config_for_current returns
+        # nil and the subagent just inherits the primary.
+        config.models.first["base_url"] = "https://unknown-vendor.example.com/v1"
         config.models.first["api_key"] = "sk-generic"
 
         subagent = agent.fork_subagent(model: "lite")

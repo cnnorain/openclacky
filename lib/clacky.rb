@@ -136,6 +136,15 @@ module Clacky
   class AgentInterrupted < Exception; end  # Inherit from Exception to bypass rescue StandardError
   class AgentError < StandardError; end
   class BadRequestError < AgentError; end  # 400 errors — our request was malformed, history should be rolled back
+  class InsufficientCreditError < AgentError
+    attr_reader :error_code, :provider_id
+
+    def initialize(message, error_code: nil, provider_id: nil)
+      super(message)
+      @error_code = error_code
+      @provider_id = provider_id
+    end
+  end
   class RetryableError < StandardError; end  # Transient errors that should be retried (5xx, HTML response, rate limit)
   # Upstream (model/router like OpenRouter/Bedrock) returned finish_reason="stop" together with
   # one or more tool_calls whose `arguments` JSON was truncated (empty, "{}" placeholder, or

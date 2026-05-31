@@ -40,6 +40,8 @@ module Clacky
           id:                   session_id,
           status:               :idle,
           error:                nil,
+          error_code:           nil,
+          top_up_url:           nil,
           updated_at:           Time.now,
           agent:                nil,
           ui:                   nil,
@@ -166,7 +168,8 @@ module Clacky
             live_name  = s[:agent]&.name
             live_name  = nil if live_name&.empty?
           live_cost_source = s[:agent]&.cost_source
-          { status: s[:status], error: s[:error], model: model_info&.dig(:model), model_id: model_info&.dig(:id), name: live_name,
+          { status: s[:status], error: s[:error], error_code: s[:error_code], top_up_url: s[:top_up_url],
+            model: model_info&.dig(:model), model_id: model_info&.dig(:id), name: live_name,
             total_tasks: s[:agent]&.total_tasks, total_cost: s[:agent]&.total_cost,
             cost_source: live_cost_source,
             reasoning_effort: s[:agent]&.reasoning_effort,
@@ -242,7 +245,8 @@ module Clacky
           model_info = s[:agent]&.current_model_info
           live_name  = s[:agent]&.name
           live_name  = nil if live_name&.empty?
-          { status: s[:status], error: s[:error], model: model_info&.dig(:model), model_id: model_info&.dig(:id),
+          { status: s[:status], error: s[:error], error_code: s[:error_code], top_up_url: s[:top_up_url],
+            model: model_info&.dig(:model), model_id: model_info&.dig(:id),
             name: live_name, total_tasks: s[:agent]&.total_tasks,
             total_cost: s[:agent]&.total_cost, cost_source: s[:agent]&.cost_source,
             reasoning_effort: s[:agent]&.reasoning_effort,
@@ -265,6 +269,8 @@ module Clacky
           name:          ls&.dig(:name) || s[:name] || "",
           status:        ls ? ls[:status].to_s : "idle",
           error:         ls ? ls[:error] : nil,
+          error_code:    ls&.dig(:error_code),
+          top_up_url:    ls&.dig(:top_up_url),
           model:         ls&.dig(:model),
           model_id:      ls&.dig(:model_id),
           card_model:    ls&.dig(:card_model),
