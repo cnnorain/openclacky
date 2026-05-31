@@ -19,7 +19,7 @@ require_relative "../brand_config"
 require_relative "channel"
 require_relative "../banner"
 require_relative "../utils/file_processor"
-
+require_relative "../upgrade_merger"
 module Clacky
   module Server
     # Lightweight UI collector used by api_session_messages to capture events
@@ -1220,11 +1220,15 @@ module Clacky
       # Upgrades openclacky in a background thread, streaming output via WebSocket broadcast.
       # If the user's gem source is the official RubyGems, use `gem update`.
       # Otherwise (e.g. Aliyun mirror) download the .gem from OSS CDN to bypass mirror lag.
+      # Uses three-way merge to preserve user modifications during upgrade.
       def api_upgrade_version(req, res)
         json_response(res, 202, { ok: true, message: "Upgrade started" })
 
         Thread.new do
           begin
+            # 保存升级前快照
+            save_pre_upgrade_snapshot
+
             if official_gem_source?
               upgrade_via_gem_update
             else
@@ -1237,7 +1241,6 @@ module Clacky
           end
         end
       end
-
       # Returns true when the bind host is loopback-only.
       private def local_host?(host)
         ["127.0.0.1", "::1", "localhost"].include?(host.to_s.strip)
@@ -1447,6 +1450,8 @@ module Clacky
       # is in fact now installed at the latest version, reverse the verdict.
       # This guards against false negatives from the Terminal idle-poll
       # mechanism (see: 0.9.36 upgrade failure bug).
+      #
+      # After successful upgrade, performs three-way merge to preserve user modifications.
       private def finish_upgrade(success, fallback_hint: "gem update openclacky")
         if !success && gem_actually_upgraded?
           Clacky::Logger.warn("[Upgrade] run_shell reported failure, but installed version matches latest — treating as success.")
@@ -1457,12 +1462,71 @@ module Clacky
         if success
           Clacky::Logger.info("[Upgrade] Success!")
           broadcast_all(type: "upgrade_log", line: "\n✓ Upgrade successful! Please restart the server to apply the new version.\n")
+          
+          # 执行三路合并以保留用户修改
+          perform_post_upgrade_merge
+          
           broadcast_all(type: "upgrade_complete", success: true)
         else
           Clacky::Logger.warn("[Upgrade] Failed.")
           broadcast_all(type: "upgrade_log", line: "\n✗ Upgrade failed. Please try manually: #{fallback_hint}\n")
           broadcast_all(type: "upgrade_complete", success: false)
         end
+      end
+
+      # 保存升级前快照，用于三路合并
+      private def save_pre_upgrade_snapshot
+        require_relative "../upgrade_merger"
+        
+        current_version = Clacky::VERSION
+        Clacky::Logger.info("[Upgrade] Saving pre-upgrade snapshot for version #{current_version}")
+        broadcast_all(type: "upgrade_log", line: "Saving pre-upgrade snapshot...\n")
+        
+        snapshot = Clacky::UpgradeMerger.save_pre_upgrade_snapshot(current_version)
+        Clacky::Logger.info("[Upgrade] Snapshot saved: #{snapshot[:default_skills].size} skills, #{snapshot[:config_files].size} config files")
+        broadcast_all(type: "upgrade_log", line: "Snapshot saved: #{snapshot[:default_skills].size} skills, #{snapshot[:config_files].size} config files\n")
+      rescue StandardError => e
+        Clacky::Logger.warn("[Upgrade] Failed to save pre-upgrade snapshot: #{e.message}")
+        broadcast_all(type: "upgrade_log", line: "Warning: Failed to save pre-upgrade snapshot: #{e.message}\n")
+      end
+
+      # 升级后执行三路合并，保留用户修改
+      private def perform_post_upgrade_merge
+        require_relative "../upgrade_merger"
+        
+        old_version = Clacky::VERSION
+        new_version = fetch_latest_version_cached || Clacky::VERSION
+        
+        Clacky::Logger.info("[Upgrade] Performing post-upgrade merge: #{old_version} -> #{new_version}")
+        broadcast_all(type: "upgrade_log", line: "Performing three-way merge to preserve your modifications...\n")
+        
+        if Clacky::UpgradeMerger.has_mergeable_files?(old_version)
+          results = Clacky::UpgradeMerger.merge_after_upgrade(old_version, new_version)
+          
+          if results[:success]
+            if results[:merged_files].any?
+              Clacky::Logger.info("[Upgrade] Merged #{results[:merged_files].size} files: #{results[:merged_files].join(', ')}")
+              broadcast_all(type: "upgrade_log", line: "✓ Merged #{results[:merged_files].size} files: #{results[:merged_files].join(', ')}\n")
+            end
+            
+            if results[:conflicts].any?
+              Clacky::Logger.warn("[Upgrade] #{results[:conflicts].size} files have conflicts")
+              broadcast_all(type: "upgrade_log", line: "⚠ #{results[:conflicts].size} files have conflicts (user modifications preserved)\n")
+              results[:conflicts].each do |conflict|
+                broadcast_all(type: "upgrade_log", line: "  - #{conflict[:file]}: #{conflict[:error]}\n")
+              end
+            end
+          else
+            Clacky::Logger.warn("[Upgrade] Merge failed: #{results[:error]}")
+            broadcast_all(type: "upgrade_log", line: "⚠ Merge failed: #{results[:error]}\n")
+          end
+        else
+          Clacky::Logger.info("[Upgrade] No mergeable files found")
+          broadcast_all(type: "upgrade_log", line: "No files need merging\n")
+        end
+      rescue StandardError => e
+        Clacky::Logger.warn("[Upgrade] Post-upgrade merge failed: #{e.message}")
+        broadcast_all(type: "upgrade_log", line: "⚠ Post-upgrade merge failed: #{e.message}\n")
       end
 
       # Check whether the latest published version of openclacky is already
@@ -1480,7 +1544,6 @@ module Clacky
         Clacky::Logger.warn("[Upgrade] gem_actually_upgraded? error: #{e.message}")
         false
       end
-
       # POST /api/restart
       # Re-execs the current process so the newly installed gem version is loaded.
       # Uses the absolute script path captured at startup to avoid relative-path issues.
