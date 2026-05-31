@@ -137,7 +137,8 @@ module Clacky
     # Returns the topics string if found, nil otherwise.
     # e.g. "<topics>Rails setup, database config</topics>" → "Rails setup, database config"
     def parse_topics(content)
-      m = content.match(/<topics>(.*?)<\/topics>/m)
+      return nil if content.nil? || content.to_s.empty?
+      m = content.to_s.match(/<topics>(.*?)<\/topics>/m)
       m ? m[1].strip : nil
     end
 
