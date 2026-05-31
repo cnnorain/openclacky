@@ -168,7 +168,7 @@ module Clacky
         if deleted_records.any?
           merged = {
             session_id: "_deleted_",
-            session_name: "已删除会话",
+            session_name: nil,
             is_deleted: true,
             total_cost: deleted_records.sum { |r| r[:total_cost] }.round(6),
             total_tokens: deleted_records.sum { |r| r[:total_tokens] },
