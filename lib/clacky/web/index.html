@@ -724,8 +724,8 @@
         <button class="settings-tab active" data-tab="models" data-i18n="settings.tabs.models">Models</button>
         <button class="settings-tab" data-tab="ui" data-i18n="settings.tabs.ui">UI</button>
         <button class="settings-tab" data-tab="general" data-i18n="settings.tabs.general">General</button>
-        <button class="settings-tab" data-tab="about" data-i18n="settings.tabs.about">About</button>
-      </div>
+        <button class="settings-tab" data-tab="update" data-i18n="settings.tabs.update">Update</button>
+        <button class="settings-tab" data-tab="about" data-i18n="settings.tabs.about">About</button>      </div>
 
       <div id="settings-body">
 
@@ -905,8 +905,88 @@
           </section>
         </div><!-- end Tab: General -->
 
-        <!-- ══ Tab: About ══ -->
-        <div class="settings-tab-content" data-tab-content="about" style="display:none">
+        <!-- ══ Tab: Update ══ -->
+        <div class="settings-tab-content" data-tab-content="update" style="display:none">
+          <!-- Version Check section -->
+          <section class="settings-section">
+            <div class="settings-section-title">
+              <span data-i18n="settings.update.versionCheck">Version Check</span>
+            </div>
+            <div class="settings-update-version">
+              <div class="update-current-version">
+                <span class="update-label" data-i18n="settings.update.currentVersion">Current Version</span>
+                <span class="update-value" id="update-current-version">—</span>
+              </div>
+              <div class="update-latest-version">
+                <span class="update-label" data-i18n="settings.update.latestVersion">Latest Version</span>
+                <span class="update-value" id="update-latest-version">—</span>
+              </div>
+              <div class="update-status" id="update-status">
+                <span class="update-status-icon">✓</span>
+                <span class="update-status-text" data-i18n="settings.update.upToDate">You are up to date</span>
+              </div>
+              <button id="btn-check-update" class="btn-settings-action" data-i18n="settings.update.checkForUpdate">Check for Updates</button>
+            </div>
+          </section>
+
+          <!-- Update History section -->
+          <section class="settings-section">
+            <div class="settings-section-title">
+              <span data-i18n="settings.update.history">Update History</span>
+            </div>
+            <div class="settings-update-history" id="update-history">
+              <div class="update-history-empty" data-i18n="settings.update.noHistory">No update history available</div>
+            </div>
+          </section>
+
+          <!-- Merge Conflicts section -->
+          <section class="settings-section">
+            <div class="settings-section-title">
+              <span data-i18n="settings.update.mergeConflicts">Merge Conflicts</span>
+            </div>
+            <div class="settings-update-conflicts" id="update-conflicts">
+              <div class="update-conflicts-empty" data-i18n="settings.update.noConflicts">No merge conflicts detected</div>
+            </div>
+          </section>
+
+          <!-- Update Settings section -->
+          <section class="settings-section">
+            <div class="settings-section-title">
+              <span data-i18n="settings.update.settings">Update Settings</span>
+            </div>
+            <div class="settings-update-settings">
+              <label class="toggle-switch">
+                <input type="checkbox" id="update-auto-check" checked>
+                <span class="toggle-slider"></span>
+                <span class="toggle-label" data-i18n="settings.update.autoCheck">Automatically check for updates</span>
+              </label>
+              <label class="toggle-switch">
+                <input type="checkbox" id="update-auto-backup" checked>
+                <span class="toggle-slider"></span>
+                <span class="toggle-label" data-i18n="settings.update.autoBackup">Backup before update</span>
+              </label>
+              <label class="toggle-switch">
+                <input type="checkbox" id="update-merge-notify" checked>
+                <span class="toggle-slider"></span>
+                <span class="toggle-label" data-i18n="settings.update.mergeNotify">Notify on merge conflicts</span>
+              </label>
+            </div>
+          </section>
+
+          <!-- Update Actions section -->
+          <section class="settings-section">
+            <div class="settings-section-title">
+              <span data-i18n="settings.update.actions">Update Actions</span>
+            </div>
+            <div class="settings-update-actions">
+              <button id="btn-update-now" class="btn-primary" data-i18n="settings.update.updateNow">Update Now</button>
+              <button id="btn-view-snapshots" class="btn-settings-action" data-i18n="settings.update.viewSnapshots">View Snapshots</button>
+              <button id="btn-clear-snapshots" class="btn-settings-action btn-settings-action-danger" data-i18n="settings.update.clearSnapshots">Clear Old Snapshots</button>
+            </div>
+          </section>
+        </div>
+
+        <!-- ══ Tab: About ══ -->        <div class="settings-tab-content" data-tab-content="about" style="display:none">
           <!-- Version section -->
           <section class="settings-section">
             <div class="settings-section-title">

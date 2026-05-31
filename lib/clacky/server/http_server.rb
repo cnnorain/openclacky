@@ -432,8 +432,14 @@ module Clacky
         when ["GET",    "/api/local-image"]       then api_serve_local_image(req, res)
         when ["GET",    "/api/version"]           then api_get_version(res)
         when ["POST",   "/api/version/upgrade"]   then api_upgrade_version(req, res)
-        when ["POST",   "/api/restart"]           then api_restart(req, res)
-        when ["GET",    "/api/billing/summary"]   then api_billing_summary(req, res)
+        when ["GET",    "/api/upgrade/check"]     then api_upgrade_check(res)
+        when ["GET",    "/api/upgrade/history"]   then api_upgrade_history(res)
+        when ["GET",    "/api/upgrade/conflicts"] then api_upgrade_conflicts(res)
+        when ["GET",    "/api/upgrade/settings"]  then api_upgrade_settings(res)
+        when ["POST",   "/api/upgrade/settings"]  then api_save_upgrade_settings(req, res)
+        when ["POST",   "/api/upgrade"]           then api_upgrade_execute(req, res)
+        when ["DELETE", "/api/upgrade/snapshots"] then api_upgrade_clear_snapshots(res)
+        when ["POST",   "/api/restart"]           then api_restart(req, res)        when ["GET",    "/api/billing/summary"]   then api_billing_summary(req, res)
         when ["GET",    "/api/billing/daily"]     then api_billing_daily(req, res)
         when ["GET",    "/api/billing/records"]   then api_billing_records(req, res)
         when ["GET",    "/api/billing/sessions"]  then api_billing_sessions(req, res)
@@ -1241,9 +1247,220 @@ module Clacky
           end
         end
       end
+
+      # GET /api/upgrade/check
+      # Checks for available updates and returns version information.
+      def api_upgrade_check(res)
+        begin
+          current = Clacky::VERSION
+          latest = fetch_latest_version_cached
+          needs_update = latest ? version_older?(current, latest) : false
+
+          json_response(res, 200, {
+            current_version: current,
+            latest_version: latest,
+            needs_update: needs_update,
+            checked_at: Time.now.iso8601
+          })
+        rescue StandardError => e
+          json_response(res, 500, { error: "Failed to check for updates: #{e.message}" })
+        end
+      end
+
+      # GET /api/upgrade/history
+      # Returns the upgrade history from snapshots.
+      def api_upgrade_history(res)
+        begin
+          history = []
+          snapshots_dir = Clacky::UpgradeMerger::UPGRADE_SNAPSHOTS_DIR
+
+          if Dir.exist?(snapshots_dir)
+            Dir.glob(File.join(snapshots_dir, "*")).sort.reverse.each do |snapshot_dir|
+              next unless File.directory?(snapshot_dir)
+              
+              metadata_path = File.join(snapshot_dir, "metadata.json")
+              next unless File.exist?(metadata_path)
+
+              metadata = JSON.parse(File.read(metadata_path))
+              history << {
+                version: metadata["version"],
+                timestamp: metadata["timestamp"],
+                merged_files: metadata.dig("default_skills")&.length || 0,
+                has_conflicts: false # Will be updated when we check conflicts
+              }
+            end
+          end
+
+          json_response(res, 200, { history: history })
+        rescue StandardError => e
+          json_response(res, 500, { error: "Failed to load upgrade history: #{e.message}" })
+        end
+      end
+
+      # GET /api/upgrade/conflicts
+      # Returns current merge conflicts from the last upgrade.
+      def api_upgrade_conflicts(res)
+        begin
+          conflicts = []
+          snapshots_dir = Clacky::UpgradeMerger::UPGRADE_SNAPSHOTS_DIR
+
+          if Dir.exist?(snapshots_dir)
+            # Find the most recent snapshot
+            latest_snapshot = Dir.glob(File.join(snapshots_dir, "*")).max_by { |d| File.mtime(d) }
+            
+            if latest_snapshot
+              metadata_path = File.join(latest_snapshot, "metadata.json")
+              if File.exist?(metadata_path)
+                metadata = JSON.parse(File.read(metadata_path))
+                version = metadata["version"]
+                
+                # Check for conflicts in the merge result
+                # This is a simplified check - in a real implementation,
+                # you would store conflict information during the merge process
+                if metadata["default_skills"]
+                  metadata["default_skills"].each do |skill_info|
+                    skill_name = skill_info["name"]
+                    user_skill_dir = File.join(Clacky::UpgradeMerger::USER_SKILLS_DIR, skill_name)
+                    
+                    if Dir.exist?(user_skill_dir)
+                      skill_info["files"]&.each do |file_path|
+                        user_file = File.join(user_skill_dir, file_path)
+                        if File.exist?(user_file)
+                          content = File.read(user_file)
+                          if content.include?("<<<<<<<") && content.include?(">>>>>>>")
+                            conflicts << {
+                              file: "#{skill_name}/#{file_path}",
+                              type: "merge_conflict",
+                              preview: content.lines.first(5).join
+                            }
+                          end
+                        end
+                      end
+                    end
+                  end
+                end
+              end
+            end
+          end
+
+          json_response(res, 200, { conflicts: conflicts })
+        rescue StandardError => e
+          json_response(res, 500, { error: "Failed to load conflicts: #{e.message}" })
+        end
+      end
+
+      # GET /api/upgrade/settings
+      # Returns upgrade-related settings.
+      def api_upgrade_settings(res)
+        begin
+          settings = load_upgrade_settings
+          json_response(res, 200, settings)
+        rescue StandardError => e
+          json_response(res, 500, { error: "Failed to load upgrade settings: #{e.message}" })
+        end
+      end
+
+      # POST /api/upgrade/settings
+      # Saves upgrade-related settings.
+      def api_save_upgrade_settings(req, res)
+        begin
+          body = read_json_body(req)
+          settings = load_upgrade_settings
+
+          # Update settings with provided values
+          settings["auto_check_updates"] = body["auto_check_updates"] if body.key?("auto_check_updates")
+          settings["backup_before_update"] = body["backup_before_update"] if body.key?("backup_before_update")
+          settings["notify_conflicts"] = body["notify_conflicts"] if body.key?("notify_conflicts")
+          settings["check_interval_hours"] = body["check_interval_hours"] if body.key?("check_interval_hours")
+
+          save_upgrade_settings(settings)
+          json_response(res, 200, { ok: true, settings: settings })
+        rescue StandardError => e
+          json_response(res, 500, { error: "Failed to save upgrade settings: #{e.message}" })
+        end
+      end
+
+      # POST /api/upgrade
+      # Executes the upgrade process with three-way merge.
+      def api_upgrade_execute(req, res)
+        json_response(res, 202, { ok: true, message: "Upgrade started" })
+
+        Thread.new do
+          begin
+            current_version = Clacky::VERSION
+            
+            # Save pre-upgrade snapshot
+            broadcast_all(type: "upgrade_log", line: "Saving pre-upgrade snapshot...\n")
+            snapshot = Clacky::UpgradeMerger.save_pre_upgrade_snapshot(current_version)
+            broadcast_all(type: "upgrade_log", line: "Snapshot saved for version #{current_version}\n")
+
+            # Perform the upgrade
+            broadcast_all(type: "upgrade_log", line: "Starting upgrade...\n")
+            
+            if official_gem_source?
+              upgrade_via_gem_update
+            else
+              upgrade_via_oss_cdn
+            end
+
+            # After upgrade, perform three-way merge
+            broadcast_all(type: "upgrade_log", line: "Performing three-way merge...\n")
+            new_version = Clacky::VERSION
+            
+            if new_version != current_version
+              merge_result = Clacky::UpgradeMerger.merge_after_upgrade(current_version, new_version)
+              
+              if merge_result[:success]
+                broadcast_all(type: "upgrade_log", line: "Merge completed successfully\n")
+                broadcast_all(type: "upgrade_log", line: "Merged files: #{merge_result[:merged_files].join(', ')}\n") if merge_result[:merged_files].any?
+                
+                if merge_result[:conflicts].any?
+                  broadcast_all(type: "upgrade_log", line: "Conflicts detected:\n")
+                  merge_result[:conflicts].each do |conflict|
+                    broadcast_all(type: "upgrade_log", line: "  - #{conflict[:file]}: #{conflict[:error]}\n")
+                  end
+                end
+              else
+                broadcast_all(type: "upgrade_log", line: "Merge failed: #{merge_result[:error]}\n")
+              end
+            end
+
+            broadcast_all(type: "upgrade_complete", success: true)
+          rescue StandardError => e
+            Clacky::Logger.error("[Upgrade] Exception: #{e.class}: #{e.message}\n#{e.backtrace.first(5).join("\n")}")
+            broadcast_all(type: "upgrade_log", line: "\n✗ Error during upgrade: #{e.message}\n")
+            broadcast_all(type: "upgrade_complete", success: false)
+          end
+        end
+      end
+
+      # DELETE /api/upgrade/snapshots
+      # Clears old upgrade snapshots.
+      def api_upgrade_clear_snapshots(res)
+        begin
+          snapshots_dir = Clacky::UpgradeMerger::UPGRADE_SNAPSHOTS_DIR
+          cleared_count = 0
+
+          if Dir.exist?(snapshots_dir)
+            Dir.glob(File.join(snapshots_dir, "*")).each do |snapshot_dir|
+              next unless File.directory?(snapshot_dir)
+              
+              # Keep the most recent snapshot
+              next if snapshot_dir == Dir.glob(File.join(snapshots_dir, "*")).max_by { |d| File.mtime(d) }
+              
+              FileUtils.rm_rf(snapshot_dir)
+              cleared_count += 1
+            end
+          end
+
+          json_response(res, 200, { ok: true, cleared: cleared_count })
+        rescue StandardError => e
+          json_response(res, 500, { error: "Failed to clear snapshots: #{e.message}" })
+        end
+      end
+
       # Returns true when the bind host is loopback-only.
-      private def local_host?(host)
-        ["127.0.0.1", "::1", "localhost"].include?(host.to_s.strip)
+      private def local_host?(host)        ["127.0.0.1", "::1", "localhost"].include?(host.to_s.strip)
       end
 
       # Resolve access key from CLACKY_ACCESS_KEY env var only.
@@ -1529,8 +1746,40 @@ module Clacky
         broadcast_all(type: "upgrade_log", line: "⚠ Post-upgrade merge failed: #{e.message}\n")
       end
 
-      # Check whether the latest published version of openclacky is already
-      # installed locally. Used as a post-upgrade sanity check so a flaky
+      # Load upgrade settings from ~/.clacky/upgrade_settings.yml
+      private def load_upgrade_settings
+        settings_file = File.join(Dir.home, ".clacky", "upgrade_settings.yml")
+        
+        default_settings = {
+          "auto_check_updates" => true,
+          "backup_before_update" => true,
+          "notify_conflicts" => true,
+          "check_interval_hours" => 24
+        }
+
+        if File.exist?(settings_file)
+          begin
+            settings = YAML.safe_load(File.read(settings_file))
+            default_settings.merge(settings || {})
+          rescue StandardError => e
+            Clacky::Logger.warn("[Upgrade] Failed to load settings: #{e.message}")
+            default_settings
+          end
+        else
+          default_settings
+        end
+      end
+
+      # Save upgrade settings to ~/.clacky/upgrade_settings.yml
+      private def save_upgrade_settings(settings)
+        settings_file = File.join(Dir.home, ".clacky", "upgrade_settings.yml")
+        FileUtils.mkdir_p(File.dirname(settings_file))
+        File.write(settings_file, YAML.dump(settings))
+      rescue StandardError => e
+        Clacky::Logger.warn("[Upgrade] Failed to save settings: #{e.message}")
+      end
+
+      # Check whether the latest published version of openclacky is already      # installed locally. Used as a post-upgrade sanity check so a flaky
       # run_shell result doesn't mask a successful install.
       # Returns false on any error (conservative — don't fabricate success).
       private def gem_actually_upgraded?
