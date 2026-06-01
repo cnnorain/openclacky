@@ -4265,9 +4265,9 @@ body {
 }
 /* Children container */
 .dp-children {
-  /* indented by paddingLeft on .dp-row */
-}
-/* Loading / empty / error states */
+  display: flex;
+  flex-direction: column;
+}/* Loading / empty / error states */
 .dp-loading,
 .dp-empty,
 .dp-error {
