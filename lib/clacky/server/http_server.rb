@@ -2649,16 +2649,28 @@ module Clacky
         root = File.expand_path(agent.working_dir.to_s)
         return json_response(res, 404, { error: "Working directory not found" }) unless Dir.exist?(root)
 
-        rel = URI.decode_www_form(req.query_string.to_s).to_h["path"].to_s
-        rel = rel.sub(%r{\A/+}, "").strip
-        target = File.expand_path(File.join(root, rel))
+        query = URI.decode_www_form(req.query_string.to_s).to_h
+        rel = query["path"].to_s
+        absolute_mode = query["absolute"] == "true"
 
-        # Reject traversal outside the working directory.
-        unless target == root || target.start_with?("#{root}/")
-          return json_response(res, 403, { error: "Path outside working directory" })
+        # Absolute mode: allow browsing outside working directory (e.g., root "/")
+        if absolute_mode
+          target = File.expand_path(rel.empty? ? "/" : rel)
+          display_root = target
+          # Normalize rel for API response
+          rel = target
+        else
+          rel = rel.sub(%r{\A/+}, "").strip
+          target = File.expand_path(File.join(root, rel))
+          display_root = root
+
+          # Reject traversal outside the working directory.
+          unless target == root || target.start_with?("#{root}/")
+            return json_response(res, 403, { error: "Path outside working directory" })
+          end
         end
-        return json_response(res, 404, { error: "Directory not found" }) unless Dir.exist?(target)
 
+        return json_response(res, 404, { error: "Directory not found" }) unless Dir.exist?(target)
         entries = Dir.children(target).reject { |name| IGNORED_FILE_ENTRIES.include?(name) }
 
         items = entries.filter_map do |name|
@@ -2668,7 +2680,7 @@ module Clacky
           next unless File.exist?(full)
           {
             name:  name,
-            path:  rel.empty? ? name : "#{rel}/#{name}",
+            path:  "#{rel}/#{name}".gsub(%r{/+}, "/"),
             type:  is_dir ? "dir" : "file",
             size:  is_dir ? nil : (File.size(full) rescue nil)
           }
@@ -2679,7 +2691,7 @@ module Clacky
         # Directories first, then files; both case-insensitive alphabetical.
         items.sort_by! { |it| [it[:type] == "dir" ? 0 : 1, it[:name].downcase] }
 
-        json_response(res, 200, { root: root, path: rel, entries: items })
+        json_response(res, 200, { root: display_root, path: rel, entries: items })
       rescue StandardError => e
         json_response(res, 500, { error: e.message })
       end
