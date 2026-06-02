@@ -607,7 +607,7 @@ module Clacky
         # Optional source; defaults to :manual. Accept "system" for skill-launched sessions
         # (e.g. /onboard, /browser-setup, /channel-manager).
         raw_source = body["source"].to_s.strip
-        source = %w[manual cron channel setup].include?(raw_source) ? raw_source.to_sym : :manual
+        source = %w[manual web cron channel setup].include?(raw_source) ? raw_source.to_sym : :manual
 
         raw_dir = body["working_dir"].to_s.strip
         working_dir = raw_dir.empty? ? default_working_dir : File.expand_path(raw_dir)
