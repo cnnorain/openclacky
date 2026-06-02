@@ -4135,8 +4135,7 @@ body {
   font-family: var(--font-mono, monospace);
   transition: border-color 0.15s;
   box-sizing: border-box;
-}
-.dir-picker-input:focus {
+}.dir-picker-input:focus {
   outline: none;
   border-color: var(--color-accent);
 }
@@ -4157,8 +4156,7 @@ body {
 .dp-path-container {
   flex-shrink: 0;
   position: relative;
-}
-/* Autocomplete dropdown */
+}/* Autocomplete dropdown */
 .dp-autocomplete {
   position: absolute;
   top: 100%;
