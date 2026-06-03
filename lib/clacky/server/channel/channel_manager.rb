@@ -58,6 +58,9 @@ module Clacky
 
         Clacky::Logger.info("[ChannelManager] Starting channels: #{enabled_platforms.join(", ")}")
         @running = true
+
+        restore_channel_bindings
+
         enabled_platforms.each { |platform| start_adapter(platform) }
       end
 
@@ -240,7 +243,11 @@ module Clacky
         end
 
         session_id = resolve_session(event)
-        session_id = auto_create_session(adapter, event) unless session_id
+        if session_id
+          bind_key_to_session(channel_key(event), session_id)
+        else
+          session_id = auto_create_session(adapter, event)
+        end
 
         session = @registry.get(session_id)
         unless session
@@ -263,8 +270,13 @@ module Clacky
         agent  = session[:agent]
         web_ui = session[:ui]
 
+        # Set channel info on the agent so session context includes platform/sender.
+        agent.channel_info = extract_channel_info(event) if agent.respond_to?(:channel_info=)
+
+        # Re-attach channel UI if it was dropped (session was evicted from memory and rebuilt by ensure).
+        ensure_channel_ui_subscribed(session_id, event)
+
         # Update reply context so responses thread under the current message.
-        # channel_ui is bound to the session for its full lifetime (created in auto_create_session).
         channel_ui_for_session(session_id)&.update_message_context(event)
 
         # Sync the inbound message to WebUI so it shows up in the browser session.
@@ -499,6 +511,16 @@ module Clacky
           found = nil
           @registry.with_session(summary[:id]) { |s| found = s[:channel_keys]&.include?(key) }
           return summary[:id] if found
+
+          # Check evicted channel sessions via persisted channel_info
+          next unless summary[:source] == "channel"
+          next unless @registry.ensure(summary[:id])
+          agent = nil
+          @registry.with_session(summary[:id]) { |s| agent = s[:agent] }
+          next unless agent&.channel_info
+          next unless channel_key_from_info(agent.channel_info) == key
+          bind_key_to_session(key, summary[:id])
+          return summary[:id]
         end
         nil
       rescue StandardError => e
@@ -532,6 +554,24 @@ module Clacky
         result = nil
         @registry.with_session(session_id) { |s| result = s[:channel_ui] }
         result
+      end
+
+      # Make sure session has a ChannelUIController subscribed to its WebUIController.
+      # Needed both at startup (for restored sessions) and after a session is evicted
+      # from memory and rebuilt by SessionRegistry#ensure (which drops :ui/:channel_ui).
+      def ensure_channel_ui_subscribed(session_id, event)
+        needs_attach = false
+        @registry.with_session(session_id) do |s|
+          needs_attach = s[:ui] && s[:channel_ui].nil?
+        end
+        return unless needs_attach
+
+        channel_ui = ChannelUIController.new(event, -> { adapter_for(event[:platform]) })
+        @registry.with_session(session_id) do |s|
+          next unless s[:ui] && s[:channel_ui].nil?
+          s[:ui].subscribe_channel(channel_ui)
+          s[:channel_ui] = channel_ui
+        end
       end
 
       def web_ui_for_session_diag(session_id)
@@ -581,6 +621,27 @@ module Clacky
         end
       end
 
+      def channel_key_from_info(channel_info)
+        platform = channel_info[:platform].to_s
+        chat_id  = channel_info[:chat_id].to_s
+        user_id  = channel_info[:user_id].to_s
+        case @binding_mode
+        when :chat      then "#{platform}:chat:#{chat_id}"
+        when :user      then "#{platform}:user:#{user_id}"
+        else # :chat_user (default)
+          "#{platform}:chat:#{chat_id}:user:#{user_id}"
+        end
+      end
+
+      private def extract_channel_info(event)
+        {
+          platform:  event[:platform],
+          user_id:   event[:user_id],
+          user_name: event[:user_name],
+          chat_id:   event[:chat_id]
+        }
+      end
+
       # Extract the chat_id from the remainder of a channel_key (after removing "platform:" prefix).
       #
       # Possible formats:
@@ -602,6 +663,32 @@ module Clacky
         else
           remainder
         end
+      end
+
+      def restore_channel_bindings
+        bound_keys = Set.new
+        restored_count = 0
+        @registry.list(limit: nil).each do |summary|
+          @registry.ensure(summary[:id])
+          agent = nil
+          @registry.with_session(summary[:id]) { |s| agent = s[:agent] }
+          next unless agent&.channel_info
+
+          info = agent.channel_info
+          next unless info[:platform] && info[:user_id] && info[:chat_id]
+
+          key = channel_key_from_info(info)
+
+          event = { platform: info[:platform], chat_id: info[:chat_id] }
+          ensure_channel_ui_subscribed(summary[:id], event)
+
+          next unless bound_keys.add?(key)
+          bind_key_to_session(key, summary[:id])
+
+          Clacky::Logger.info("[ChannelManager] Restored channel binding #{key} -> session #{summary[:id][0, 8]}")
+          restored_count += 1
+        end
+        Clacky::Logger.info("[ChannelManager] Restored #{restored_count} channel binding(s)") if restored_count > 0
       end
 
       def safe_stop_adapter(adapter)

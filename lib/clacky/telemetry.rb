@@ -42,7 +42,8 @@ module Clacky
           os:            RbConfig::CONFIG["host_os"],
           ruby_version:  RUBY_VERSION,
           brand:         brand.branded? ? brand.package_name : nil,
-          launch_source: LAUNCH_SOURCES.fetch(ENV["CLACKY_LAUNCHED_BY"], "cli")
+          launch_source: LAUNCH_SOURCES.fetch(ENV["CLACKY_LAUNCHED_BY"], "cli"),
+          container:     detect_container
         }.compact
 
         fire_and_forget("/api/v1/telemetry/startup", payload)
@@ -62,7 +63,8 @@ module Clacky
         payload = {
           device_id: resolve_device_id(brand),
           version:   Clacky::VERSION,
-          brand:     brand.branded? ? brand.package_name : nil
+          brand:     brand.branded? ? brand.package_name : nil,
+          container: detect_container
         }
         payload.merge!(extract_task_metrics(result)) if result.is_a?(Hash)
 
@@ -78,6 +80,18 @@ module Clacky
 
       private def resolve_device_id(brand)
         brand.device_id
+      end
+
+      private def detect_container
+        return "docker" if File.exist?("/.dockerenv")
+
+        begin
+          cgroup = File.read("/proc/1/cgroup")
+          return "docker" if cgroup.include?("docker") || cgroup.include?("containerd")
+        rescue Errno::ENOENT, Errno::EACCES
+          nil
+        end
+        nil
       end
 
       private def extract_task_metrics(result)

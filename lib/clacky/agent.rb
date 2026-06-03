@@ -46,6 +46,7 @@ module Clacky
                 :latest_latency,  # Hash of latency metrics from the most recent LLM call (see Client#send_messages_with_tools)
                 :reasoning_effort
     attr_accessor :pinned
+    attr_accessor :channel_info
 
     REASONING_EFFORTS = %w[low medium high].freeze
 
@@ -72,6 +73,7 @@ module Clacky
       @config = config.is_a?(AgentConfig) ? config : AgentConfig.new(config)
       @agent_profile = AgentProfile.load(profile)
       @source = source.to_sym  # :manual | :cron | :channel
+      @channel_info = nil  # { platform:, user_id:, user_name:, chat_id: } set by ChannelManager
       @tool_registry = ToolRegistry.new
       @hooks = HookManager.new
       @session_id = session_id
@@ -1593,6 +1595,13 @@ module Clacky
         desktop ? "Desktop: #{desktop}" : nil,
         "Working directory: #{@working_dir}"
       ].compact.join(". ")
+      if @channel_info
+        platform = @channel_info[:platform].to_s
+        user_id  = @channel_info[:user_id].to_s
+        user_name = @channel_info[:user_name].to_s
+        sender = user_name.empty? ? user_id : "@#{user_name}(#{user_id})"
+        parts = "#{parts}. Channel: #{platform}, Sender: #{sender}"
+      end
 
       content = "[Session context: #{parts}]"
 

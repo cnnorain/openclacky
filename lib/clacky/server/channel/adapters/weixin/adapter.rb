@@ -300,10 +300,29 @@ module Clacky
               return { message_id: nil }
             end
 
+            text = sanitize_for_weixin(text)
             return { message_id: nil } if text.strip.empty?
 
             @send_queue.enqueue(chat_id, text, ctoken)
             { message_id: nil }
+          end
+
+          private def sanitize_for_weixin(text)
+            s = text.to_s
+            s = s.gsub(/^[ \t]{0,3}>[ \t]?/, "")
+            s = s.gsub(/\*\*([^\n*][^*]*?)\*\*/m) { Regexp.last_match(1) }
+            s = s.gsub(/`([^`\n]+)`/) { Regexp.last_match(1) }
+            s = s.gsub(/^[ \t]{0,3}\#{1,6}[ \t]+/, "")
+            s
+          end
+
+          private def sanitize_file_name_for_weixin(name)
+            ext = File.extname(name.to_s)
+            stem = File.basename(name.to_s, ext)
+            stem = stem.tr("&<>\"'\/", "_")
+            stem = stem.gsub(/[\x00-\x1f]/, "_").strip
+            stem = "file" if stem.empty?
+            "#{stem}#{ext}"
           end
 
           # Force-flush pending text for a chat_id. Called before sending files or on task completion.
@@ -321,17 +340,20 @@ module Clacky
               return { message_id: nil }
             end
 
+            display_name = name || File.basename(file_path)
+            safe_name = sanitize_file_name_for_weixin(display_name)
+
             @send_queue.flush(chat_id)
 
             @api_client.send_file(
               to_user_id:    chat_id,
               file_path:     file_path,
-              file_name:     name || File.basename(file_path),
+              file_name:     safe_name,
               context_token: ctoken
             )
             { message_id: nil }
           rescue => e
-            Clacky::Logger.error("[WeixinAdapter] send_file failed for #{chat_id}: #{e.message}")
+            Clacky::Logger.error("[WeixinAdapter] send_file failed for #{chat_id}: #{e.class}: #{e.message}")
             { message_id: nil }
           end
 

@@ -25,6 +25,9 @@ module Clacky
         # Restore source; fall back to :manual for sessions saved before this field existed
         @source = (session_data[:source] || "manual").to_sym
 
+        # Restore channel info for IM platform sessions
+        @channel_info = session_data[:channel_info]
+
         # Restore cache statistics if available
         @cache_stats = session_data.dig(:stats, :cache_stats) || {
           cache_creation_input_tokens: 0,
@@ -158,6 +161,7 @@ module Clacky
             model_base_url: persisted_card_field("base_url"),
             sub_model: @config.session_model_overlay_name
           },
+          channel_info: @channel_info,
           stats: stats_data,
           messages: @history.to_a
         }
