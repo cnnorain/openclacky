@@ -5,6 +5,29 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.10] - 2026-06-03
+
+### Added
+- Compressor concurrency config and Ollama context size auto-detection
+- Channel sessions auto-rebind on server restart
+- Disk space check (4 GB minimum) on Windows install
+- WSL network connectivity pre-check before installation
+- MiniMax M3 provider with vision support and pricing
+- One-click exchange rate update in settings
+- Rich TUI controller for terminal interaction
+
+### Improved
+- WebUI working directory selector UX
+- Qwen pricing table: official rates, promo discounts, clean up stale models
+
+### Fixed
+- Directory picker interaction and indentation issues
+- File upload for PDF and Excel files
+- Session soft-delete: count-based cleanup and never evict pinned sessions
+- Usage tooltip total value showing unreadable blue background
+- Workspace file list now collapses on session switch
+- Install script network errors use exit code 2 for better error handling
+
 ## [1.2.9] - 2026-06-01
 
 ### Added
