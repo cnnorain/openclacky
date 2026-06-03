@@ -100,6 +100,10 @@ def save_to_server(bot_token:)
   req = Net::HTTP::Post.new(uri.path, "Content-Type" => "application/json")
   req.body = body
 
+  # Auto-inject access key from environment if available
+  access_key = ENV["CLACKY_ACCESS_KEY"]
+  req["Authorization"] = "Bearer #{access_key}" if access_key && !access_key.empty?
+
   res  = http.request(req)
   data = JSON.parse(res.body) rescue {}
 
@@ -107,7 +111,6 @@ def save_to_server(bot_token:)
     fail!("Failed to save Discord config: #{data["error"] || res.body.slice(0, 200)}")
   end
 end
-
 mode_idx = ARGV.index { |a| a.start_with?("--") }
 mode     = mode_idx ? ARGV[mode_idx] : nil
 arg      = mode_idx ? ARGV[mode_idx + 1] : nil

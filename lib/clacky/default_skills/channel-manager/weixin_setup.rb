@@ -154,6 +154,10 @@ def save_to_server(token:, base_url:)
   req = Net::HTTP::Post.new(uri.path, "Content-Type" => "application/json")
   req.body = body
 
+  # Auto-inject access key from environment if available
+  access_key = ENV["CLACKY_ACCESS_KEY"]
+  req["Authorization"] = "Bearer #{access_key}" if access_key && !access_key.empty?
+
   res  = http.request(req)
   data = JSON.parse(res.body) rescue {}
 
@@ -165,7 +169,6 @@ def save_to_server(token:, base_url:)
 rescue => e
   fail!("Could not reach clacky server: #{e.message}")
 end
-
 # ---------------------------------------------------------------------------
 # Long-poll loop (shared by all modes)
 # ---------------------------------------------------------------------------
