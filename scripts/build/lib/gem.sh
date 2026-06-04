@@ -59,7 +59,12 @@ restore_gemrc() {
 setup_gem_home() {
     local gem_dir
     gem_dir=$(gem environment gemdir 2>/dev/null || true)
-    [ -w "$gem_dir" ] && return 0
+
+    # gemdir writable → no workaround needed, clean up old RC entries
+    if [ -w "$gem_dir" ]; then
+        restore_gem_home
+        return 0
+    fi
 
     local ruby_api
     ruby_api=$(ruby -e 'puts RbConfig::CONFIG["ruby_version"]' 2>/dev/null)
@@ -68,7 +73,9 @@ setup_gem_home() {
     export PATH="$HOME/.gem/ruby/${ruby_api}/bin:$PATH"
     print_info "System Ruby detected — gems will install to ~/.gem/ruby/${ruby_api}"
 
-    if [ -n "$SHELL_RC" ] && ! grep -q "GEM_HOME" "$SHELL_RC" 2>/dev/null; then
+    # Clean old RC entries (could be from a different Ruby version), then write new ones
+    restore_gem_home
+    if [ -n "$SHELL_RC" ]; then
         {
             echo ""
             echo "# Ruby user gem dir (added by openclacky installer)"

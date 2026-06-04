@@ -153,6 +153,8 @@ install_via_gem() {
     local ver; ver=$(ruby -e 'puts RUBY_VERSION' 2>/dev/null)
     version_ge "$ver" "3.1.0" || { print_error "Ruby $ver too old (>= 3.1.0 required)"; return 1; }
 
+    setup_gem_home
+
     print_info "Installing ${DISPLAY_NAME}..."
     if gem install openclacky --no-document; then
         print_success "${DISPLAY_NAME} installed!"
