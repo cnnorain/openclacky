@@ -290,6 +290,7 @@ module Clacky
           latest_latency: ls&.dig(:latest_latency),
           reasoning_effort: ls&.dig(:reasoning_effort) || s.dig(:config, :reasoning_effort),
           pinned:        s[:pinned] || false,
+          channel_info:  s[:channel_info],
         }
       end
 

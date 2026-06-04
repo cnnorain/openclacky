@@ -708,6 +708,9 @@ module Clacky
         bound_keys = Set.new
         restored_count = 0
         @registry.list(limit: nil).each do |summary|
+          info = summary[:channel_info]
+          next unless info.is_a?(Hash) && info[:platform] && info[:user_id] && info[:chat_id]
+
           @registry.ensure(summary[:id])
           agent = nil
           @registry.with_session(summary[:id]) { |s| agent = s[:agent] }
