@@ -586,9 +586,10 @@ module Clacky
 
       error_body = JSON.parse(response.body) rescue nil
       {
-        success: false,
-        status:  response.status,
-        error:   extract_error_message(error_body, response.body)
+        success:    false,
+        status:     response.status,
+        error:      extract_error_message(error_body, response.body),
+        error_code: extract_error_code(error_body)
       }
     end
 

@@ -3863,7 +3863,7 @@ module Clacky
         elsif result[:success]
           json_response(res, 200, { ok: true, message: "Connected successfully" })
         else
-          json_response(res, 200, { ok: false, message: result[:error].to_s })
+          json_response(res, 200, { ok: false, message: result[:error].to_s, error_code: result[:error_code] })
         end
       rescue => e
         json_response(res, 200, { ok: false, message: e.message })
