@@ -144,6 +144,28 @@ module Clacky
             raise RetryableError, "[LLM] Model returned empty response (no content, no tool_calls), retrying..."
           end
 
+          # Thinking-mode silent response detector. DeepSeek V4 / Kimi K2 /
+          # other reasoning models occasionally spend all output tokens inside
+          # `reasoning_content` and emit `content=""` + no tool_calls +
+          # `finish_reason="stop"`. Protocol-legal under OpenAI semantics
+          # (stop = model done), but semantically the model "thought and went
+          # silent" — agent main loop would treat it as task completion and
+          # exit. Reuse RetryableError so the existing retry + fallback
+          # pipeline handles it identically to 5xx/429.
+          if response[:content].to_s.strip.empty? &&
+              (response[:tool_calls].nil? || response[:tool_calls].empty?) &&
+              response[:reasoning_content].to_s.strip.length > 0 &&
+              response[:finish_reason].to_s == "stop"
+            reasoning_str = response[:reasoning_content].to_s
+            Clacky::Logger.warn("llm.thinking_mode_silent_response_detected",
+              model: api_call_model,
+              reasoning_len: reasoning_str.length,
+              reasoning_tail: reasoning_str[-200, 200] || reasoning_str,
+              completion_tokens: response.dig(:token_usage, :completion_tokens)
+            )
+            raise RetryableError, "[LLM] Thinking-mode model produced reasoning but empty content/tool_calls, retrying..."
+          end
+
         rescue Faraday::TimeoutError => e
           # Faraday::TimeoutError on our non-streaming POST almost always means
           # the *response* took longer than the 300s read-timeout to come back —
