@@ -25,7 +25,7 @@ Automates the complete openclacky gem release workflow via `SKILL_DIR/scripts/re
 The release script (`SKILL_DIR/scripts/release.sh`) handles everything end-to-end:
 
 1. Pre-release checks (clean working directory, required tools)
-2. Run test suite (`bundle exec rspec`)
+2. Run test suite (`bundle exec rspec`) + web search smoke tests (real network — verifies Bing/DDG parsers still work against live HTML)
 3. Bump version in `lib/clacky/version.rb`
 4. Update `Gemfile.lock` via `bundle install`
 5. Commit and push to origin, wait for CI

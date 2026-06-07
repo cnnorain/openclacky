@@ -2,15 +2,19 @@
 
 # Smoke tests: real network requests to each search provider.
 #
-# Run only in CI smoke test workflow (tag: smoke), NOT in the normal test suite.
-# Locally: bundle exec rspec spec/integration/web_search_smoke_spec.rb --tag smoke
+# NOT run in CI — datacenter IPs (e.g. GitHub Actions) get fingerprinted by
+# Bing and receive a JS-only skeleton with no parseable results, which is an
+# environment problem, not a parser problem.
+#
+# Run manually before each release / when touching web_search.rb:
+#   bundle exec rspec spec/integration/web_search_smoke_spec.rb --tag smoke
 #
 # These tests verify that:
 #   1. Each provider is reachable and returns results
 #   2. Parsed results meet minimum quality (title, valid URL, relevant content)
 #
-# If a test fails in CI, it means the provider's HTML structure has changed
-# and the corresponding parser needs to be updated + fixture refreshed.
+# A failure here means the provider's HTML structure has changed and the
+# corresponding parser needs to be updated + fixture refreshed.
 
 RSpec.describe "WebSearch smoke tests", :smoke do
   let(:tool) { Clacky::Tools::WebSearch.new }
