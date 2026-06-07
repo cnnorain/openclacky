@@ -873,6 +873,28 @@ module Clacky
         append_output(output)
       end
 
+      def phase_start(kind:, label:)
+        phase_id = SecureRandom.uuid
+        @active_phases ||= {}
+        @active_phases[phase_id] = { kind: kind, label: label, started_at: Time.now }
+        Thread.current[:clacky_phase_id] = phase_id
+
+        banner = "──────── ▼ #{label} ────────"
+        append_output(@renderer.render_system_message(banner, prefix_newline: true))
+        phase_id
+      end
+
+      def phase_end(phase_id, summary: nil)
+        Thread.current[:clacky_phase_id] = nil
+        return unless @active_phases&.key?(phase_id)
+
+        info = @active_phases.delete(phase_id)
+        label = info[:label]
+        tail = summary && !summary.to_s.strip.empty? ? " — #{summary.to_s.strip}" : ""
+        banner = "──────── ▲ #{label} done#{tail} ────────"
+        append_output(@renderer.render_system_message(banner, prefix_newline: false))
+      end
+
       # Set workspace status to idle (called when agent stops working)
       def set_idle_status
         # Safety net: close any legacy progress slots that were opened via

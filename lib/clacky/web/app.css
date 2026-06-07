@@ -2271,6 +2271,30 @@ body {
 .tool-item-stdout .ansi-black   { color: #5c6370; }
 .tool-item-stdout .ansi-bold    { font-weight: 700; }
 
+/* ── Diff block (rendered inline within edit/write tool-item) ─────────────── */
+.tool-item-diff {
+  margin: 0.25rem 0 0.25rem 1.25rem;
+  padding: 0.375rem 0.5rem;
+  background: var(--color-bg-secondary);
+  border: 1px solid var(--color-border-secondary);
+  border-radius: 4px;
+  font-size: 0.6875rem;
+  font-family: monospace;
+  line-height: 1.5;
+  max-height: 20rem;
+  overflow: auto;
+}
+.diff-line {
+  white-space: pre;
+  padding: 0 0.25rem;
+  border-radius: 2px;
+}
+.diff-line.diff-add  { background: rgba(46, 160,  67, 0.18); color: #98c379; }
+.diff-line.diff-del  { background: rgba(248,  81,  73, 0.18); color: #e06c75; }
+.diff-line.diff-hunk { color: var(--color-text-tertiary); font-style: italic; }
+.diff-line.diff-ctx  { color: var(--color-text-secondary); }
+.diff-line.diff-more { color: var(--color-text-tertiary); font-style: italic; margin-top: 0.25rem; }
+
 /* ── Thinking block (collapsible <think>...</think> sections) ─────────────── */
 .thinking-block {
   margin: 0 0 0.375rem 0;
@@ -10158,3 +10182,42 @@ body.setup-mode[data-theme="dark"] {
   justify-content: flex-end;
   margin-top: 0.25rem;
 }
+
+/* ── Phase grouping (folded subagent runs like skill evolution) ────────── */
+.msg-phase {
+  align-self: stretch;
+  margin: 0.25rem 0;
+  border: 1px dashed var(--color-border-primary);
+  border-radius: 8px;
+  background: var(--color-bg-secondary);
+  font-size: 0.8125rem;
+}
+.msg-phase-summary {
+  cursor: pointer;
+  padding: 0.375rem 0.625rem;
+  color: var(--color-text-secondary);
+  list-style: none;
+  user-select: none;
+  display: flex;
+  align-items: center;
+  gap: 0.375rem;
+}
+.msg-phase-summary::-webkit-details-marker { display: none; }
+.msg-phase-summary::before {
+  content: "\25B8";
+  font-size: 0.6875rem;
+  transition: transform 0.15s;
+}
+.msg-phase[open] .msg-phase-summary::before { transform: rotate(90deg); }
+.msg-phase-icon { font-size: 0.875rem; }
+.msg-phase-label { font-weight: 500; }
+.msg-phase-status { opacity: 0.7; font-size: 0.75rem; }
+.msg-phase-status-incomplete { color: var(--color-warning, #c97f00); }
+.msg-phase-body {
+  padding: 0.5rem 0.625rem 0.625rem;
+  border-top: 1px dashed var(--color-border-primary);
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+.msg-phase-body .msg { font-size: 0.75rem; opacity: 0.85; }
