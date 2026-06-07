@@ -79,6 +79,11 @@ module Clacky
 
           ## Decision
 
+          If the assistant's last message is a question back to the user
+          (the turn isn't actually finished), or the user was just asking/
+          discussing rather than finishing a task:
+            → Respond briefly: "Skill #{skill_name} worked well, no improvements needed."
+
           If you identified **concrete, actionable improvements**:
             → Call invoke_skill("skill-creator", task: "Improve skill #{skill_name}: [describe specific improvements needed]")
 

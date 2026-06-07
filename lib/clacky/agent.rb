@@ -533,6 +533,11 @@ module Clacky
               end
             end
 
+            # If the assistant ended its turn with a question, treat this as
+            # an in-flight conversation (agent is awaiting the user's reply)
+            # and skip skill evolution — the task isn't truly complete yet.
+            awaiting_user_feedback = true if ends_with_question
+
             break
           end
 
