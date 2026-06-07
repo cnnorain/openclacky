@@ -5,6 +5,7 @@ require "websocket"
 require "socket"
 require "json"
 require "net/http"
+require "faraday"
 require "thread"
 require "fileutils"
 require "tmpdir"
@@ -437,6 +438,7 @@ module Clacky
         when ["PATCH",  "/api/config/settings"]  then api_update_settings(req, res)
         when ["POST",   "/api/config/models"] then api_add_model(req, res)
         when ["POST",   "/api/config/test"]   then api_test_config(req, res)
+        when ["POST",   "/api/config/media/test"] then api_test_media_config(req, res)
         when ["GET",    "/api/config/media"]  then api_get_media_config(res)
         when ["GET",    "/api/providers"]     then api_list_providers(res)
         when ["GET",    "/api/onboard/status"]    then api_onboard_status(res)
@@ -939,6 +941,9 @@ module Clacky
             api_key_masked: entry ? mask_api_key(entry["api_key"]) : nil,
             provider:   state["provider"],
             available:  state["available"],
+            aliases:    state["aliases"] || {},
+            stale:      state["stale"] || false,
+            requested_model: state["requested_model"],
             configured: state["configured"]
           }
         end
@@ -956,7 +961,8 @@ module Clacky
           defaults[t] = {
             provider:  provider_id,
             model:     provider_id ? Clacky::Providers.default_media_model(provider_id, t) : nil,
-            available: provider_id ? Clacky::Providers.media_models(provider_id, t) : []
+            available: provider_id ? Clacky::Providers.media_models(provider_id, t) : [],
+            aliases:   provider_id ? Clacky::Providers.media_model_aliases(provider_id, t) : {}
           }
         end
 
@@ -969,6 +975,85 @@ module Clacky
       # off / auto — remove any custom entry; "auto" lets the virtual
       # derivation in AgentConfig#find_model_by_type take over.
       # custom — replace any existing custom entry with the supplied fields.
+      # POST /api/config/media/test
+      # Body: { kind, source, model, base_url, api_key }
+      # Lightweight preflight: GET <base_url>/models to verify connectivity,
+      # auth, and that the requested model is exposed by the endpoint.
+      # No image is generated — zero cost, sub-second.
+      def api_test_media_config(req, res)
+        body = parse_json_body(req) || {}
+        kind = body["kind"].to_s
+        return json_response(res, 422, { error: "invalid kind" }) unless %w[image video audio].include?(kind)
+        return json_response(res, 422, { error: "only image kind supported" }) unless kind == "image"
+
+        api_key = body["api_key"].to_s
+        if api_key.empty? || api_key.include?("****")
+          existing = @agent_config.find_model_by_type(kind) || {}
+          api_key = existing["api_key"].to_s
+        end
+
+        model    = body["model"].to_s.strip
+        base_url = body["base_url"].to_s.strip
+
+        if model.empty? || base_url.empty? || api_key.empty?
+          return json_response(res, 200, { ok: false, message: "model, base_url, api_key are required" })
+        end
+
+        result = preflight_media_endpoint(base_url: base_url, api_key: api_key, model: model)
+        json_response(res, 200, result)
+      rescue => e
+        json_response(res, 200, { ok: false, message: e.message })
+      end
+
+      private def preflight_media_endpoint(base_url:, api_key:, model:)
+        url = "#{base_url.chomp("/")}/models"
+        conn = Faraday.new(url: url) do |f|
+          f.options.timeout      = 10
+          f.options.open_timeout = 5
+        end
+
+        response =
+          begin
+            conn.get do |req|
+              req.headers["Authorization"] = "Bearer #{api_key}"
+              req.headers["Accept"]        = "application/json"
+            end
+          rescue Faraday::Error => e
+            return { ok: false, message: "Network error: #{e.message}" }
+          end
+
+        case response.status
+        when 401, 403
+          return { ok: false, message: "Authentication failed (HTTP #{response.status}). Check API key." }
+        when 404
+          return { ok: false, message: "Endpoint not found at #{url}. Check Base URL." }
+        end
+
+        unless response.success?
+          return { ok: false, message: "HTTP #{response.status}: #{response.body.to_s[0, 200]}" }
+        end
+
+        body = JSON.parse(response.body) rescue nil
+        ids =
+          if body.is_a?(Hash) && body["data"].is_a?(Array)
+            body["data"].map { |m| m["id"].to_s }
+          elsif body.is_a?(Array)
+            body.map { |m| m["id"].to_s }
+          else
+            []
+          end
+
+        if ids.empty?
+          return { ok: true, message: "Connected (model list unavailable; cannot verify model id)" }
+        end
+
+        if ids.include?(model)
+          { ok: true, message: "Connected. Model '#{model}' is available." }
+        else
+          { ok: false, message: "Connected, but model '#{model}' not found on this endpoint." }
+        end
+      end
+
       def api_update_media_config(kind, req, res)
         body = parse_json_body(req) || {}
         source = body["source"].to_s
@@ -978,7 +1063,23 @@ module Clacky
 
         @agent_config.models.reject! { |m| m["type"] == kind }
 
-        if source == "custom"
+        case source
+        when "off"
+          @agent_config.models << {
+            "id"       => SecureRandom.uuid,
+            "type"     => kind,
+            "disabled" => true
+          }
+        when "auto"
+          override = body["model"].to_s.strip
+          unless override.empty?
+            @agent_config.models << {
+              "id"    => SecureRandom.uuid,
+              "type"  => kind,
+              "model" => override
+            }
+          end
+        when "custom"
           model    = body["model"].to_s.strip
           base_url = body["base_url"].to_s.strip
           api_key  = body["api_key"].to_s

@@ -615,14 +615,17 @@ module Clacky
     def find_model_by_type(type)
       kind = type.to_s
       if Clacky::Providers::MEDIA_KINDS.include?(kind)
-        custom = @models.find { |m| m["type"] == kind }
-        return custom if custom
-        return derive_media_model(kind)
+        entry = @models.find { |m| m["type"] == kind }
+        return nil if entry && entry["disabled"]
+        if entry && entry["base_url"].to_s.strip != "" && entry["api_key"].to_s.strip != ""
+          return entry
+        end
+        return derive_media_model(kind, model_override: entry && entry["model"])
       end
       @models.find { |m| m["type"] == type }
     end
 
-    private def derive_media_model(kind)
+    private def derive_media_model(kind, model_override: nil)
       default = find_model_by_type("default")
       return nil unless default
 
@@ -632,7 +635,16 @@ module Clacky
       )
       return nil unless provider_id
 
-      model_name = Clacky::Providers.default_media_model(provider_id, kind)
+      if model_override && !model_override.to_s.strip.empty?
+        available = Clacky::Providers.media_models(provider_id, kind)
+        if available.include?(model_override)
+          model_name = model_override
+        else
+          model_name = Clacky::Providers.default_media_model(provider_id, kind)
+        end
+      else
+        model_name = Clacky::Providers.default_media_model(provider_id, kind)
+      end
       return nil if model_name.nil? || model_name.to_s.empty?
 
       {
@@ -662,35 +674,67 @@ module Clacky
     #   "available"  [Array<String>]      — auto-source candidates from preset
     def media_state(kind)
       kind = kind.to_s
-      custom = @models.find { |m| m["type"] == kind }
-      auto   = custom ? nil : derive_media_model(kind)
-      entry  = custom || auto
+      raw_entry = @models.find { |m| m["type"] == kind }
+
+      if raw_entry && raw_entry["disabled"]
+        default = find_model_by_type("default")
+        default_provider = default && Clacky::Providers.resolve_provider(
+          base_url: default["base_url"], api_key: default["api_key"]
+        )
+        available = default_provider ? Clacky::Providers.media_models(default_provider, kind) : []
+        aliases  = default_provider ? Clacky::Providers.media_model_aliases(default_provider, kind) : {}
+        return {
+          "configured" => false,
+          "source"     => "off",
+          "model"      => nil,
+          "base_url"   => nil,
+          "provider"   => nil,
+          "available"  => available,
+          "aliases"    => aliases,
+          "stale"      => false
+        }
+      end
+
+      is_custom = raw_entry &&
+                  raw_entry["base_url"].to_s.strip != "" &&
+                  raw_entry["api_key"].to_s.strip != ""
+      override_model = raw_entry && !is_custom ? raw_entry["model"] : nil
+
+      entry = if is_custom
+                raw_entry
+              else
+                derive_media_model(kind, model_override: override_model)
+              end
 
       provider_id = if entry
                       Clacky::Providers.resolve_provider(
-                        base_url: entry["base_url"],
-                        api_key:  entry["api_key"]
+                        base_url: entry["base_url"], api_key: entry["api_key"]
                       )
                     end
 
-      available_provider_id = if custom
+      available_provider_id = if is_custom
                                 provider_id
                               else
                                 default = find_model_by_type("default")
                                 default && Clacky::Providers.resolve_provider(
-                                  base_url: default["base_url"],
-                                  api_key:  default["api_key"]
+                                  base_url: default["base_url"], api_key: default["api_key"]
                                 )
                               end
       available = available_provider_id ? Clacky::Providers.media_models(available_provider_id, kind) : []
+      aliases   = available_provider_id ? Clacky::Providers.media_model_aliases(available_provider_id, kind) : {}
+
+      stale = !!(override_model && entry && entry["model"] != override_model)
 
       {
         "configured" => !entry.nil?,
-        "source"     => custom ? "custom" : (auto ? "auto" : "off"),
+        "source"     => is_custom ? "custom" : (entry ? "auto" : "off"),
         "model"      => entry && entry["model"],
         "base_url"   => entry && entry["base_url"],
         "provider"   => provider_id,
-        "available"  => available
+        "available"  => available,
+        "aliases"    => aliases,
+        "stale"      => stale,
+        "requested_model" => stale ? override_model : nil
       }
     end
 

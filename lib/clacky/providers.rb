@@ -53,6 +53,11 @@ module Clacky
           "or-gemini-3-1-flash-image",
           "or-gpt-image-2"
         ],
+        "image_model_aliases" => {
+          "or-gemini-3-pro-image"      => "Nano Banana Pro",
+          "or-gemini-3-1-flash-image"  => "Nano Banana 2",
+          "or-gpt-image-2"             => "GPT Image 2"
+        },
         "default_image_model" => "or-gpt-image-2",
         # Provider-level default: the Claude family served here is vision-capable.
         "capabilities" => { "vision" => true }.freeze,
@@ -484,6 +489,30 @@ module Clacky
       def image_models(provider_id)
         preset = PRESETS[provider_id]
         preset&.dig("image_models") || []
+      end
+
+      def image_model_aliases(provider_id)
+        preset = PRESETS[provider_id]
+        preset&.dig("image_model_aliases") || {}
+      end
+
+      def video_model_aliases(provider_id)
+        preset = PRESETS[provider_id]
+        preset&.dig("video_model_aliases") || {}
+      end
+
+      def audio_model_aliases(provider_id)
+        preset = PRESETS[provider_id]
+        preset&.dig("audio_model_aliases") || {}
+      end
+
+      def media_model_aliases(provider_id, kind)
+        case kind.to_s
+        when "image" then image_model_aliases(provider_id)
+        when "video" then video_model_aliases(provider_id)
+        when "audio" then audio_model_aliases(provider_id)
+        else {}
+        end
       end
 
       # Video generation models — placeholder. No provider supports video

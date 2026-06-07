@@ -2162,26 +2162,11 @@ body {
 .tool-item .token-usage-line.tu-attached {
   align-self: stretch;
   margin: 0.25rem 0 0;
-  padding: 4px 0 0;
-  border-top: 1px dashed var(--color-border-primary);
+  padding: 2px 0 0;
   opacity: 0.55;
-  position: relative;
-  flex-wrap: nowrap;
-  white-space: nowrap;
+  flex-wrap: wrap;
 }
 .tool-item .token-usage-line.tu-attached:hover { opacity: 0.95; }
-.tool-item .token-usage-line.tu-attached .tu-detail {
-  position: absolute;
-  left: 100%;
-  top: 50%;
-  transform: translateY(-50%);
-  margin-left: 0.5rem;
-  padding-top: 4px;
-  background: var(--color-bg-primary);
-  white-space: nowrap;
-  pointer-events: none;
-}
-.tool-item .token-usage-line.tu-attached:hover .tu-detail { display: flex; }
 .tu-delta-neg   { color: var(--color-accent-primary); }  /* cyan — compression */
 
 /* Detail fields: hidden by default, revealed on hover */
@@ -10064,6 +10049,7 @@ body.setup-mode[data-theme="dark"] {
   background: var(--color-bg-secondary);
   margin-bottom: 0.5rem;
   overflow: hidden;
+  max-width: 48rem;
 }
 .media-row.is-expanded {
   background: var(--color-bg-secondary);
@@ -10086,25 +10072,28 @@ body.setup-mode[data-theme="dark"] {
   background: var(--color-bg-primary);
   border: 1px solid var(--color-border-primary);
   border-radius: 6px;
-  padding: 1px;
+  padding: 2px;
 }
 .media-row-segmented button {
   background: transparent;
   border: none;
-  padding: 0.25rem 0.625rem;
+  padding: 0.3125rem 0.875rem;
   font-size: 0.75rem;
+  font-weight: 500;
   color: var(--color-text-secondary);
   border-radius: 5px;
   cursor: pointer;
-  transition: background-color 0.15s ease, color 0.15s ease;
+  transition: background-color 0.15s ease, color 0.15s ease, box-shadow 0.15s ease;
   font-family: inherit;
 }
 .media-row-segmented button:hover:not(.is-active):not(:disabled) {
   color: var(--color-text-primary);
+  background: var(--color-bg-secondary);
 }
 .media-row-segmented button.is-active {
   background: var(--color-button-primary);
   color: #fff;
+  box-shadow: 0 1px 2px rgba(0,0,0,0.1);
 }
 .media-row-segmented button:disabled {
   opacity: 0.4;
@@ -10205,6 +10194,77 @@ body.setup-mode[data-theme="dark"] {
   gap: 0.5rem;
   justify-content: flex-end;
   margin-top: 0.25rem;
+}
+
+.media-auto-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 0.625rem 1rem;
+}
+.media-provider-line {
+  display: flex;
+  align-items: baseline;
+  gap: 0.5rem;
+  font-size: 0.8125rem;
+  margin-bottom: 0.625rem;
+}
+.media-provider-label {
+  color: var(--color-text-secondary);
+}
+.media-provider-value {
+  color: var(--color-text-primary);
+  font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+}
+.media-auto-readonly {
+  background: var(--color-bg-primary);
+  border: 1px solid var(--color-border-primary);
+  border-radius: 6px;
+  padding: 0.4375rem 0.625rem;
+  font-size: 0.8125rem;
+  color: var(--color-text-primary);
+  font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+  word-break: break-all;
+  min-height: 1.125rem;
+  line-height: 1.4;
+}
+.media-custom-fields {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 0.625rem;
+}
+.media-custom-readonly-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.375rem;
+}
+.media-custom-readonly-row {
+  display: flex;
+  align-items: baseline;
+  gap: 0.5rem;
+  font-size: 0.8125rem;
+  line-height: 1.4;
+}
+.media-custom-readonly-label {
+  flex: 0 0 auto;
+  min-width: 4.5rem;
+  color: var(--color-text-secondary);
+}
+.media-custom-readonly-value {
+  flex: 1 1 auto;
+  color: var(--color-text-primary);
+  font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+  word-break: break-all;
+}
+.media-row-btn-sm {
+  font-size: 0.75rem;
+  padding: 0.3125rem 0.875rem;
+}
+.media-row-detail .model-test-result {
+  margin-top: 0.5rem;
+  min-height: 1rem;
+}
+.media-row-detail .media-row-actions {
+  margin-top: 0.625rem;
 }
 
 /* ── Phase grouping (folded subagent runs like skill evolution) ────────── */
