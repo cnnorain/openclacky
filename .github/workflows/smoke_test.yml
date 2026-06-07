@@ -31,6 +31,30 @@ jobs:
       - name: Run smoke tests
         run: bundle exec rspec spec/integration/web_search_smoke_spec.rb --tag smoke --format documentation
 
+      - name: Diagnose Bing response on failure
+        if: failure()
+        run: |
+          set +e
+          for HOST in cn.bing.com www.bing.com; do
+            echo "=== ${HOST} ==="
+            curl -sS -o /tmp/bing.html -w "http=%{http_code} size=%{size_download} time=%{time_total}\n" \
+              -A "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Safari/537.36" \
+              -H "Accept: text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8" \
+              -H "Accept-Language: en-US,en;q=0.9" \
+              -H "Referer: https://${HOST}/" \
+              -H "Sec-Fetch-Dest: document" \
+              -H "Sec-Fetch-Mode: navigate" \
+              -H "Sec-Fetch-Site: same-origin" \
+              -H "Upgrade-Insecure-Requests: 1" \
+              "https://${HOST}/search?q=ruby+programming+language&count=5&form=QBLH"
+            echo "b_algo count: $(grep -o 'b_algo' /tmp/bing.html | wc -l)"
+            echo "title: $(grep -oE '<title>[^<]+</title>' /tmp/bing.html | head -1)"
+            echo "first 400 chars of body:"
+            head -c 400 /tmp/bing.html
+            echo ""
+            echo
+          done
+
       - name: Notify on failure
         if: failure()
         run: |
