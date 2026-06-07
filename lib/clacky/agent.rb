@@ -661,6 +661,7 @@ module Clacky
         # Safety net: ensure any lingering progress spinner is stopped.
         # Normal paths close their own spinners; this guards against exceptions
         # raised between a progress slot's active/done pair.
+        Clacky::Logger.warn("[ph_debug] agent_run_ensure")
         @ui&.show_progress(phase: "done")
 
         # Shred any decrypted-script tmpdirs created during this run for encrypted brand skills.
