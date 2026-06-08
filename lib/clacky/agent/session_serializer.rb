@@ -272,6 +272,7 @@ module Clacky
           # Disk files (PDF, doc, etc.): stored in display_files on the user message at send time
           disk_files  = Array(msg[:display_files]).map { |f|
             { name: f[:name] || f["name"], type: f[:type] || f["type"] || "file",
+              path: f[:path] || f["path"],
               preview_path: f[:preview_path] || f["preview_path"] }
           }
           all_files = image_files + disk_files

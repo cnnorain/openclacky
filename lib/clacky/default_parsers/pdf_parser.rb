@@ -15,18 +15,22 @@
 # This file lives in ~/.clacky/parsers/ and can be modified by the LLM.
 #
 # Extraction pipeline (first successful step wins):
-#   1. pdftotext (poppler)     — fastest, text-based PDFs
-#   2. pdfplumber (Python)     — handles more layouts
-#                                (→ pdf_parser_plumber.py)
-#   3. OCR (tesseract)         — scanned / image-only PDFs
-#                                (→ pdf_parser_ocr.py)
+#   1. pdftotext (poppler)        — fastest, text-based PDFs
+#   2. pdfplumber (Python)        — handles more layouts
+#                                   (→ pdf_parser_plumber.py)
+#   3. VLM sidecar (Vision OCR)   — high-quality on scanned PDFs;
+#                                   requires CLACKY_SERVER_HOST/PORT in env
+#                                   and an OCR sidecar configured
+#                                   (→ pdf_parser_vlm.py)
+#   4. tesseract (offline OCR)    — last-resort, works fully offline
+#                                   (→ pdf_parser_ocr.py)
 #
 # Each extractor is a plain, self-contained function. Python-backed steps
 # shell out to a sibling .py script so the LLM can edit them directly
 # (with proper syntax highlighting, linters, and per-file run/debug)
 # instead of wrestling with embedded heredocs.
 #
-# VERSION: 3
+# VERSION: 4
 
 require "open3"
 
@@ -90,6 +94,28 @@ rescue Errno::ENOENT
   nil # tesseract or python3 not available
 end
 
+# VLM (Vision) sidecar fallback. Routes through the local Clacky server's
+# /api/internal/ocr-image so the OCR sidecar config (model/key/base_url)
+# stays in one place. Skipped silently when the server isn't reachable
+# or no sidecar is configured — falls through to tesseract.
+def try_vlm(path)
+  return nil if ENV["CLACKY_SERVER_PORT"].to_s.empty?
+
+  script = File.join(SCRIPT_DIR, "pdf_parser_vlm.py")
+  return nil unless File.exist?(script)
+
+  stdout, stderr, status = Open3.capture3("python3", script, path)
+  unless status.success?
+    warn stderr.strip unless stderr.strip.empty?
+    return nil
+  end
+  text = stdout.strip
+  return nil if text.bytesize < MIN_CONTENT_BYTES
+  text
+rescue Errno::ENOENT
+  nil # python3 not available
+end
+
 # --- main ---
 
 path = ARGV[0]
@@ -105,7 +131,7 @@ unless File.exist?(path)
 end
 
 # Try each extractor in order; first non-nil result wins.
-text = try_pdftotext(path) || try_pdfplumber(path) || try_ocr(path)
+text = try_pdftotext(path) || try_pdfplumber(path) || try_vlm(path) || try_ocr(path)
 
 if text
   print text

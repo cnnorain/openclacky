@@ -638,12 +638,12 @@ module Clacky
     end
 
     private def derive_media_model(kind, model_override: nil)
-      default = find_model_by_type("default")
-      return nil unless default
+      anchor = current_model || find_model_by_type("default")
+      return nil unless anchor
 
       provider_id = Clacky::Providers.resolve_provider(
-        base_url: default["base_url"],
-        api_key:  default["api_key"]
+        base_url: anchor["base_url"],
+        api_key:  anchor["api_key"]
       )
       return nil unless provider_id
 
@@ -661,8 +661,8 @@ module Clacky
 
       {
         "model"         => model_name,
-        "base_url"      => default["base_url"],
-        "api_key"       => default["api_key"],
+        "base_url"      => anchor["base_url"],
+        "api_key"       => anchor["api_key"],
         "type"          => kind,
         "auto_injected" => true
       }

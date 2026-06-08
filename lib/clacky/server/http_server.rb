@@ -443,6 +443,7 @@ module Clacky
         when ["GET",    "/api/config/ocr"]    then api_get_ocr_config(res)
         when ["PATCH",  "/api/config/ocr"]    then api_update_ocr_config(req, res)
         when ["POST",   "/api/config/ocr/test"] then api_test_ocr_config(req, res)
+        when ["POST",   "/api/internal/ocr-image"] then api_internal_ocr_image(req, res)
         when ["GET",    "/api/providers"]     then api_list_providers(res)
         when ["GET",    "/api/onboard/status"]    then api_onboard_status(res)
         when ["GET",    "/api/browser/status"]    then api_browser_status(res)
@@ -1221,6 +1222,62 @@ module Clacky
         json_response(res, 200, result)
       rescue => e
         json_response(res, 200, { ok: false, message: e.message })
+      end
+
+      # POST /api/internal/ocr-image
+      # Internal endpoint used by parser scripts (e.g. pdf_parser_vlm.py) to
+      # transcribe a single image via the configured OCR sidecar. Localhost-
+      # only by virtue of the standard auth path: when the server binds to
+      # 127.0.0.1 (@localhost_only), check_access_key returns true without
+      # requiring a token, so parsers running on the same host can call this
+      # endpoint with no extra wiring.
+      #
+      # Request:  multipart/form-data with field "image" (binary), optional "prompt"
+      #           OR JSON body { "data_url": "data:image/png;base64,...", "prompt": "..." }
+      # Response: { ok: true, text: "..." } or { ok: false, message: "..." }
+      def api_internal_ocr_image(req, res)
+        entry = @agent_config.find_model_by_type("ocr")
+        unless entry
+          return json_response(res, 503, { ok: false, message: "OCR sidecar not configured" })
+        end
+
+        prompt   = nil
+        data_url = nil
+        bytes    = nil
+        mime     = "image/png"
+
+        ctype = req.content_type.to_s
+        if ctype.start_with?("multipart/form-data")
+          parts = req.query
+          if (img = parts["image"])
+            bytes = img.respond_to?(:read) ? img.read : img.to_s
+            mime  = (img.respond_to?(:[]) ? img["content-type"].to_s : nil)
+            mime  = "image/png" if mime.nil? || mime.empty?
+          end
+          prompt = parts["prompt"].to_s if parts["prompt"]
+        else
+          body = parse_json_body(req) || {}
+          data_url = body["data_url"].to_s
+          prompt   = body["prompt"].to_s if body["prompt"]
+        end
+
+        image =
+          if bytes && !bytes.empty?
+            { bytes: bytes, mime_type: mime }
+          elsif data_url && !data_url.empty?
+            { data_url: data_url }
+          else
+            return json_response(res, 400, { ok: false, message: "image or data_url required" })
+          end
+
+        text = Clacky::Vision::Resolver.new(entry).describe(image, prompt: prompt)
+        if text && !text.strip.empty?
+          json_response(res, 200, { ok: true, text: text })
+        else
+          json_response(res, 200, { ok: false, message: "OCR returned empty result" })
+        end
+      rescue => e
+        json_response(res, 500, { ok: false, message: e.message })
       end
 
       # POST /api/onboard/complete

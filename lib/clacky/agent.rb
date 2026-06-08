@@ -349,12 +349,15 @@ module Clacky
       end
 
       # Build display_files for replay: lightweight metadata so the UI can reconstruct
-      # file badges (PDF, doc, etc.) on page refresh. Images are NOT stored here — they
-      # are recovered from the image_url blocks in user_content by extract_image_files_from_content.
+      # file badges (PDF, doc, etc.) on page refresh. Vision-inlined images are NOT
+      # stored here — they recover from image_url blocks in user_content. Downgraded
+      # images (provider has no vision / too large / OCR'd) DO need path here so the
+      # UI can re-render them from the on-disk copy across session switches.
       display_files = all_disk_files.filter_map do |f|
         name = f[:name] || f["name"]
         next unless name
         { name: name, type: f[:type] || f["type"] || "file",
+          path: f[:path] || f["path"],
           preview_path: f[:preview_path] || f["preview_path"] }
       end
 
