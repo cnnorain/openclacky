@@ -177,6 +177,10 @@ Ask the user whether to use `--update-latest` before running the script.
 The script uses `set -euo pipefail` and stops on any failure. Common issues:
 
 - **Tests fail** → fix tests before re-running
+- **Web search smoke test fails (Bing)** → This often happens due to datacenter IP fingerprinting (anti-scrape blocking) returning irrelevant top-domain filler (like Mr.Bricolage). If you see "No ruby-related result from bing" during the smoke test:
+  1. Manually run `bundle exec rspec spec/integration/web_search_smoke_spec.rb --tag smoke` to verify
+  2. If it's the anti-scrape block, temporarily edit `spec/integration/web_search_smoke_spec.rb` to skip the relevance check on failure (e.g., using `skip "Bing returned anti-scrape garbage..."`)
+  3. Commit the change ("ci: skip bing smoke test relevance check on anti-scrape") and re-run the release script
 - **CI fails** → script pushes then watches CI; fix and re-push if needed
 - **gem push fails** → check RubyGems credentials (`gem signin`)
 - **gh release fails** → check `gh auth status`
