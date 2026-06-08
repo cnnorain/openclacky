@@ -440,6 +440,9 @@ module Clacky
         when ["POST",   "/api/config/test"]   then api_test_config(req, res)
         when ["POST",   "/api/config/media/test"] then api_test_media_config(req, res)
         when ["GET",    "/api/config/media"]  then api_get_media_config(res)
+        when ["GET",    "/api/config/ocr"]    then api_get_ocr_config(res)
+        when ["PATCH",  "/api/config/ocr"]    then api_update_ocr_config(req, res)
+        when ["POST",   "/api/config/ocr/test"] then api_test_ocr_config(req, res)
         when ["GET",    "/api/providers"]     then api_list_providers(res)
         when ["GET",    "/api/onboard/status"]    then api_onboard_status(res)
         when ["GET",    "/api/browser/status"]    then api_browser_status(res)
@@ -1101,6 +1104,123 @@ module Clacky
         json_response(res, 200, { ok: true, state: @agent_config.media_state(kind) })
       rescue => e
         json_response(res, 422, { error: e.message })
+      end
+
+      # GET /api/config/ocr
+      # Returns the OCR sidecar state for the Settings UI. Mirrors media_state
+      # in shape so the UI can render OCR with the same row component.
+      def api_get_ocr_config(res)
+        state = @agent_config.ocr_state
+        entry = @agent_config.find_model_by_type("ocr")
+
+        out = {
+          source:         state["source"],
+          model:          state["model"],
+          base_url:       state["base_url"],
+          api_key_masked: entry ? mask_api_key(entry["api_key"]) : nil,
+          provider:       state["provider"],
+          available:      state["available"],
+          stale:          state["stale"] || false,
+          requested_model: state["requested_model"],
+          configured:     state["configured"],
+          primary:        state["primary"] || false
+        }
+
+        # Auto-mode preview: surface what the OCR sidecar *would* be if the
+        # user flipped to "auto" — derived from the same provider as the
+        # current default model.
+        default = @agent_config.find_model_by_type("default")
+        provider_id = default && Clacky::Providers.resolve_provider(
+          base_url: default["base_url"],
+          api_key:  default["api_key"]
+        )
+        default_preview = {
+          provider:  provider_id,
+          model:     provider_id ? Clacky::Providers.default_ocr_model(provider_id) : nil,
+          available: provider_id ? Clacky::Providers.ocr_models(provider_id) : []
+        }
+
+        json_response(res, 200, { ocr: out, default_provider: default_preview })
+      end
+
+      # PATCH /api/config/ocr
+      # Body: { source: "off"|"auto"|"custom", model?, base_url?, api_key?,
+      #         anthropic_format? }
+      # Mirrors api_update_media_config but for the single "ocr" type.
+      def api_update_ocr_config(req, res)
+        body = parse_json_body(req) || {}
+        source = body["source"].to_s
+        unless %w[off auto custom].include?(source)
+          return json_response(res, 422, { error: "invalid source" })
+        end
+
+        @agent_config.models.reject! { |m| m["type"] == "ocr" }
+
+        case source
+        when "off"
+          @agent_config.models << {
+            "id"       => SecureRandom.uuid,
+            "type"     => "ocr",
+            "disabled" => true
+          }
+        when "auto"
+          override = body["model"].to_s.strip
+          unless override.empty?
+            @agent_config.models << {
+              "id"    => SecureRandom.uuid,
+              "type"  => "ocr",
+              "model" => override
+            }
+          end
+        when "custom"
+          model    = body["model"].to_s.strip
+          base_url = body["base_url"].to_s.strip
+          api_key  = body["api_key"].to_s
+          if api_key.include?("****")
+            existing = @agent_config.models.find { |m| m["type"] == "ocr" && m["api_key"] }
+            api_key = existing ? existing["api_key"].to_s : ""
+          end
+          if model.empty? || base_url.empty? || api_key.empty?
+            return json_response(res, 422, { error: "model, base_url, api_key are required" })
+          end
+
+          @agent_config.models << {
+            "id"               => SecureRandom.uuid,
+            "model"            => model,
+            "base_url"         => base_url,
+            "api_key"          => api_key,
+            "anthropic_format" => body["anthropic_format"] || false,
+            "type"             => "ocr"
+          }
+        end
+
+        @agent_config.save
+        json_response(res, 200, { ok: true, state: @agent_config.ocr_state })
+      rescue => e
+        json_response(res, 422, { error: e.message })
+      end
+
+      # POST /api/config/ocr/test
+      # Reuses the media preflight (GET /models) — same connectivity check.
+      def api_test_ocr_config(req, res)
+        body = parse_json_body(req) || {}
+        api_key = body["api_key"].to_s
+        if api_key.empty? || api_key.include?("****")
+          existing = @agent_config.find_model_by_type("ocr") || {}
+          api_key = existing["api_key"].to_s
+        end
+
+        model    = body["model"].to_s.strip
+        base_url = body["base_url"].to_s.strip
+
+        if model.empty? || base_url.empty? || api_key.empty?
+          return json_response(res, 200, { ok: false, message: "model, base_url, api_key are required" })
+        end
+
+        result = preflight_media_endpoint(base_url: base_url, api_key: api_key, model: model)
+        json_response(res, 200, result)
+      rescue => e
+        json_response(res, 200, { ok: false, message: e.message })
       end
 
       # POST /api/onboard/complete

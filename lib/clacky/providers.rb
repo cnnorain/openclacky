@@ -59,6 +59,10 @@ module Clacky
           "or-gpt-image-2"             => "GPT Image 2"
         },
         "default_image_model" => "or-gpt-image-2",
+        # Default OCR sidecar — used when the primary model is text-only.
+        # Candidates are derived from the provider's vision-capable models;
+        # this just picks the cheap+fast default to surface in "auto" mode.
+        "default_ocr_model" => "or-gemini-3-5-flash",
         # Provider-level default: the Claude family served here is vision-capable.
         "capabilities" => { "vision" => true }.freeze,
         # Model-level overrides: DeepSeek models routed through this provider
@@ -145,6 +149,7 @@ module Clacky
         # until we ship a dedicated client-side adapter for that protocol.
         "image_models" => [],
         "default_image_model" => nil,
+        "default_ocr_model" => "google/gemini-2.5-flash",
         "website_url" => "https://openrouter.ai/keys"
       }.freeze,
 
@@ -192,6 +197,7 @@ module Clacky
         "model_capabilities" => {
           "MiniMax-M3" => { "vision" => true }.freeze
         }.freeze,
+        "default_ocr_model" => "MiniMax-M3",
         "website_url" => "https://www.minimaxi.com/user-center/basic-information/interface-key"
       }.freeze,
 
@@ -218,6 +224,7 @@ module Clacky
         ].freeze,
         # k2.5 / k2.6 are multimodal; legacy k2 text-only models need model_capabilities override if added.
         "capabilities" => { "vision" => true }.freeze,
+        "default_ocr_model" => "kimi-k2.5",
         "website_url" => "https://platform.moonshot.cn/console/api-keys"
       }.freeze,
 
@@ -265,6 +272,7 @@ module Clacky
         "api" => "anthropic-messages",
         "default_model" => "claude-sonnet-4-6",
         "models" => ["claude-opus-4-8", "claude-opus-4-7", "claude-opus-4-6", "claude-sonnet-4-6", "claude-haiku-4-5"],
+        "default_ocr_model" => "claude-haiku-4-5",
         "website_url" => "https://console.anthropic.com/settings/keys"
       }.freeze,
 
@@ -279,6 +287,7 @@ module Clacky
         "model_capabilities" => {
           "mimo-v2-omni" => { "vision" => true }.freeze
         }.freeze,
+        "default_ocr_model" => "mimo-v2-omni",
         "website_url" => "https://platform.xiaomimimo.com/"
       }.freeze,
 
@@ -308,6 +317,7 @@ module Clacky
         "model_capabilities" => {
           "glm-5v-turbo" => { "vision" => true }.freeze
         }.freeze,
+        "default_ocr_model" => "glm-5v-turbo",
         "website_url" => "https://open.bigmodel.cn/usercenter/apikeys"
       }.freeze,
 
@@ -338,6 +348,7 @@ module Clacky
           "gpt-image-2"
         ],
         "default_image_model" => "gpt-image-2",
+        "default_ocr_model" => "gpt-5.4-mini",
         "website_url" => "https://platform.openai.com/api-keys"
       }.freeze,
 
@@ -363,6 +374,7 @@ module Clacky
         "model_capabilities" => {
           "qwen3.7-max" => { "vision" => false }.freeze
         }.freeze,
+        "default_ocr_model" => "qwen3.6-flash",
         "lite_models" => {
           "qwen3.7-max"      => "qwen3.6-flash",
           "qwen3.6-plus"     => "qwen3.6-flash",
@@ -527,6 +539,31 @@ module Clacky
       def audio_models(provider_id)
         preset = PRESETS[provider_id]
         preset&.dig("audio_models") || []
+      end
+
+      # OCR sidecar candidates: every chat model under this provider that's
+      # vision-capable. Derived from `vision` capability so we don't have
+      # to maintain a parallel list — a model that can see is by definition
+      # a candidate for "describe an image as text". Image-generation models
+      # are excluded (they take prompts and return pixels, not the other way).
+      # @param provider_id [String]
+      # @return [Array<String>]
+      def ocr_models(provider_id)
+        preset = PRESETS[provider_id]
+        return [] unless preset
+        (preset["models"] || []).select { |m| supports?(provider_id, :vision, model_name: m) }
+      end
+
+      # Default OCR sidecar model for a provider. Falls back to the first
+      # vision-capable model if the preset doesn't pin an explicit default.
+      # @param provider_id [String]
+      # @return [String, nil] nil when the provider has zero vision-capable models
+      def default_ocr_model(provider_id)
+        preset = PRESETS[provider_id]
+        return nil unless preset
+        explicit = preset["default_ocr_model"]
+        return explicit if explicit && ocr_models(provider_id).include?(explicit)
+        ocr_models(provider_id).first
       end
 
       # Unified entry for media model lookup by kind.
