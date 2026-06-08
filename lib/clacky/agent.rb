@@ -1132,16 +1132,9 @@ module Clacky
             image_block[:image_path] = path if path
             [{ type: "text", text: "[Image: #{label}]" }, image_block]
           else
-            # Primary can't see images. Try the OCR sidecar; on success the
-            # description goes inline as a text block. On failure (or no
-            # sidecar), fall back to a plain-text label so the LLM at least
-            # knows an image was produced.
-            ocr_text = try_ocr(ocr_entry, data_url: data_url, name: label)
-            if ocr_text && !ocr_text.strip.empty?
-              [{ type: "text", text: "[Image: #{label}]\nOCR description (the current model cannot see images directly; this transcription was produced by an OCR sidecar):\n#{ocr_text.strip}" }]
-            else
-              [{ type: "text", text: "[Image: #{label}] The current model has no vision and no OCR sidecar is configured. Tell the user to either configure an OCR sidecar in Settings → Media → OCR, or switch to a vision-capable model, then retry. Do not guess the image content." }]
-            end
+            ocr_result = try_ocr(ocr_entry, data_url: data_url, name: label)
+            text = ocr_text_for_inject(label, ocr_result, ocr_entry)
+            [{ type: "text", text: text }]
           end
 
         @history.append({
@@ -1544,11 +1537,10 @@ module Clacky
           file_ref  = Utils::FileProcessor.save_image_to_disk(body: raw, mime_type: mime, filename: name)
           reason    = downgrade_reason_for(vision_supported, byte_size, max_bytes)
           if reason
-            ocr_text = (reason == :provider_no_vision) ? try_ocr(ocr_entry, data_url: data_url, name: name) : nil
+            ocr_result = (reason == :provider_no_vision) ? try_ocr(ocr_entry, data_url: data_url, name: name) : nil
             entry = { name: name, path: file_ref.original_path, type: "image",
                       mime_type: mime, size_bytes: byte_size, downgrade_reason: reason }
-            entry[:ocr_text] = ocr_text if ocr_text
-            entry[:downgrade_reason] = :ocr_resolved if ocr_text
+            apply_ocr_outcome!(entry, ocr_result)
             downgraded << entry
           else
             vision_images << { url: data_url, name: name, size_bytes: byte_size, path: file_ref.original_path }
@@ -1560,11 +1552,10 @@ module Clacky
             byte_size = (b64_data.bytesize * 3) / 4
             reason    = downgrade_reason_for(vision_supported, byte_size, max_bytes)
             if reason
-              ocr_text = (reason == :provider_no_vision) ? try_ocr(ocr_entry, path: path, name: name) : nil
+              ocr_result = (reason == :provider_no_vision) ? try_ocr(ocr_entry, path: path, name: name) : nil
               entry = { name: name, path: path, type: "image",
                         mime_type: mime, size_bytes: byte_size, downgrade_reason: reason }
-              entry[:ocr_text] = ocr_text if ocr_text
-              entry[:downgrade_reason] = :ocr_resolved if ocr_text
+              apply_ocr_outcome!(entry, ocr_result)
               downgraded << entry
             else
               vision_images << { url: data_url_from_path, name: name, size_bytes: byte_size, path: path }
@@ -1581,13 +1572,25 @@ module Clacky
     # Best-effort OCR through the configured sidecar. Returns nil when no
     # sidecar is configured or the call failed — caller falls back to the
     # ":provider_no_vision" downgrade note (today's behaviour).
+    # @return [Clacky::Vision::Resolver::Result, nil]
+    #   nil — no sidecar exists or sidecar IS the primary (no point extra hop).
+    #         Caller treats this as ":provider_no_vision" (configure a sidecar).
+    #   Result — outcome from the sidecar call. status=:ok carries text;
+    #            :empty / :call_failed / :bad_image each get their own message
+    #            so the user can tell "image content unreadable" from
+    #            "sidecar misconfigured / down".
     private def try_ocr(ocr_entry, data_url: nil, path: nil, name: nil)
       return nil unless ocr_entry
-      return nil if ocr_entry["primary"]  # Same model as primary; pointless extra hop.
+      return nil if ocr_entry["primary"]
 
-      @ui&.log("OCR: describing #{name} via #{ocr_entry["model"]}...", level: :info)
       image = data_url ? { data_url: data_url } : { path: path }
-      Clacky::Vision::Resolver.new(ocr_entry).describe(image)
+
+      @ui&.show_progress("OCR...", progress_type: "thinking", phase: "active")
+      begin
+        Clacky::Vision::Resolver.new(ocr_entry).describe(image)
+      ensure
+        @ui&.show_progress(phase: "done")
+      end
     end
 
     # Decide whether an image must be downgraded to a disk ref, and if so why.
@@ -1613,6 +1616,56 @@ module Clacky
         "Image was too large for inline delivery and has been saved to disk. Read it with a vision-capable tool/model if needed."
       when :ocr_resolved
         "The current model does not support vision input. The image has been transcribed by an OCR sidecar model — the description below is what the model sees in place of the raw pixels."
+      when :ocr_call_failed
+        "The current model does not support vision and the configured OCR sidecar call failed. Tell the user the sidecar (Settings → Media → OCR) errored — likely a misconfigured base_url / api_key, or the upstream is down. They can retry, fix the sidecar config, or switch to a vision-capable primary model. Do not guess the image content."
+      when :ocr_empty
+        "The current model does not support vision. The OCR sidecar responded but returned no readable text (the model produced no description — possibly the image is blank, or the model exhausted its token budget on internal reasoning). Tell the user honestly; do not guess the image content."
+      when :ocr_bad_image
+        "The current model does not support vision. The OCR sidecar could not read the image bytes (corrupt or unsupported format). Tell the user; do not guess the image content."
+      end
+    end
+
+    # Mutates `entry` in place based on the OCR Result outcome.
+    # Sets `:ocr_text` (only on :ok) and rewrites `:downgrade_reason` to one
+    # of :ocr_resolved / :ocr_call_failed / :ocr_empty / :ocr_bad_image.
+    # When ocr_result is nil (no sidecar configured) leaves the original
+    # :provider_no_vision reason untouched.
+    private def apply_ocr_outcome!(entry, ocr_result)
+      return entry unless ocr_result
+
+      case ocr_result.status
+      when :ok
+        entry[:ocr_text] = ocr_result.text
+        entry[:downgrade_reason] = :ocr_resolved
+      when :empty
+        entry[:downgrade_reason] = :ocr_empty
+      when :call_failed
+        entry[:downgrade_reason] = :ocr_call_failed
+        entry[:ocr_error] = ocr_result.error
+      when :bad_image
+        entry[:downgrade_reason] = :ocr_bad_image
+      end
+      entry
+    end
+
+    # Build the inline text block used by the image_inject path (tool screenshots,
+    # generated images, etc. that arrive as content blocks rather than as
+    # display_files entries).
+    private def ocr_text_for_inject(label, ocr_result, ocr_entry)
+      header = "[Image: #{label}]"
+      if ocr_result.nil?
+        return "#{header} The current model has no vision and no OCR sidecar is configured. Tell the user to either configure an OCR sidecar in Settings → Media → OCR, or switch to a vision-capable model, then retry. Do not guess the image content."
+      end
+
+      case ocr_result.status
+      when :ok
+        "#{header}\nOCR description (the current model cannot see images directly; this transcription was produced by sidecar #{ocr_entry["model"]}):\n#{ocr_result.text.strip}"
+      when :empty
+        "#{header} The OCR sidecar (#{ocr_entry["model"]}) returned no readable text. The image may be blank, or the sidecar exhausted its token budget on internal reasoning. Tell the user honestly; do not guess the image content."
+      when :call_failed
+        "#{header} The OCR sidecar (#{ocr_entry["model"]}) call failed: #{ocr_result.error}. Tell the user the sidecar errored (likely a misconfigured base_url / api_key in Settings → Media → OCR, or the upstream is down). They can retry, fix the sidecar, or switch to a vision-capable primary model. Do not guess the image content."
+      when :bad_image
+        "#{header} The OCR sidecar could not read the image bytes (corrupt or unsupported format). Tell the user; do not guess the image content."
       end
     end
 

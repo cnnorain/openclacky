@@ -26,26 +26,15 @@ module Clacky
         your description.
       PROMPT
 
-      MAX_TOKENS = 2048
+      MAX_TOKENS = 8192
       CACHE_DIR  = File.join(Dir.home, ".clacky", "ocr_cache")
       CACHE_VERSION = 1
 
-      class << self
-        # Convenience entry-point. Looks up the configured OCR sidecar and
-        # invokes #describe. Returns nil when no sidecar is available
-        # (caller falls back to today's "no vision" behaviour).
-        # @param agent_config [Clacky::AgentConfig]
-        # @param image [Hash] one of:
-        #   { data_url: "data:image/png;base64,..." }
-        #   { path: "/abs/path.png" }
-        #   { bytes: "<binary>", mime_type: "image/png" }
-        # @param prompt [String, nil] override prompt (caching key includes it)
-        # @return [String, nil] description text, or nil on unavailable/error
-        def describe(agent_config:, image:, prompt: nil)
-          entry = agent_config.find_model_by_type("ocr")
-          return nil unless entry
-          new(entry).describe(image, prompt: prompt)
-        end
+      Result = Struct.new(:status, :text, :error, keyword_init: true) do
+        def ok?;          status == :ok;          end
+        def empty?;       status == :empty;       end
+        def call_failed?; status == :call_failed; end
+        def bad_image?;   status == :bad_image;   end
       end
 
       def initialize(model_entry)
@@ -56,25 +45,29 @@ module Clacky
         @anthropic   = !!model_entry["anthropic_format"]
       end
 
-      # @return [String, nil] description, or nil on failure (logged)
+      # @return [Result] one of:
+      #   status=:ok          + text   — sidecar produced a description
+      #   status=:empty               — sidecar returned 200 but no usable text (e.g. token budget exhausted by reasoning)
+      #   status=:call_failed + error — network/parse/auth error from the sidecar
+      #   status=:bad_image           — image bytes unreadable / empty
       def describe(image, prompt: nil)
         prompt = prompt.to_s.strip
         prompt = DEFAULT_PROMPT if prompt.empty?
 
         bytes, mime = read_image(image)
-        return nil unless bytes && !bytes.empty?
+        return Result.new(status: :bad_image) if bytes.nil? || bytes.empty?
 
         cached = cache_get(bytes, prompt)
-        return cached if cached
+        return Result.new(status: :ok, text: cached) if cached
 
         text = call_vlm(bytes, mime, prompt)
-        return nil if text.nil? || text.strip.empty?
+        return Result.new(status: :empty) if text.nil? || text.strip.empty?
 
         cache_put(bytes, prompt, text)
-        text
+        Result.new(status: :ok, text: text)
       rescue => e
         Clacky::Logger.warn("[Vision::Resolver] failed: #{e.class}: #{e.message}") if defined?(Clacky::Logger)
-        nil
+        Result.new(status: :call_failed, error: "#{e.class}: #{e.message}")
       end
 
       private def read_image(image)

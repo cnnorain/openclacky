@@ -398,7 +398,17 @@ module Clacky
     def parse_simple_openai_response(response)
       raise_error(response) unless response.status == 200
       parsed_body = safe_json_parse(response.body, context: "LLM response")
-      parsed_body["choices"].first["message"]["content"]
+      content = parsed_body.dig("choices", 0, "message", "content")
+      if content.nil?
+        snippet = response.body.to_s[0, 1200]
+        if defined?(Clacky::Logger)
+          Clacky::Logger.warn("[parse_simple_openai_response] no content. status=#{response.status} body=#{snippet}")
+        end
+        raise Clacky::Error,
+          "Upstream OpenAI-compatible response missing choices[0].message.content. " \
+          "Body snippet: #{snippet}"
+      end
+      content
     end
 
     # ── Prompt caching helpers ────────────────────────────────────────────────
