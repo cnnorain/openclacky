@@ -1242,7 +1242,7 @@ module Clacky
         # Skip malformed tool calls with nil name or arguments
         next if name.nil? || arguments.nil?
 
-        {
+        formatted = {
           id: call[:id],
           type: call[:type] || "function",
           function: {
@@ -1250,6 +1250,8 @@ module Clacky
             arguments: arguments
           }
         }
+        formatted[:extra_content] = call[:extra_content] if call[:extra_content]
+        formatted
       end
 
       valid.any? ? valid : nil
