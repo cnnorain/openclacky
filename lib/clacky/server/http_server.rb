@@ -40,15 +40,13 @@ module Clacky
           url  = f[:data_url] || f["data_url"]
           name = f[:name]     || f["name"]
           path = f[:path]     || f["path"]
+          type = f[:type]     || f["type"] || ""
 
           if url
             url
-          elsif path && File.exist?(path.to_s)
-            # Reconstruct data_url from the tmp file (still present on disk)
+          elsif type.to_s == "image" && path && File.exist?(path.to_s)
             Utils::FileProcessor.image_path_to_data_url(path) rescue "expired:#{name}"
           elsif name
-            # File badge for non-image disk files, or image whose tmp file is gone
-            type = f[:type] || f["type"] || ""
             type.to_s == "image" ? "expired:#{name}" : "pdf:#{name}"
           end
         end
