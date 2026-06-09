@@ -192,17 +192,20 @@ module Clacky
 
       private def run_loop
         loop do
-          break unless @running
+          begin
+            break unless @running
 
-          tick(Time.now)
+            tick(Time.now)
 
-          # Sleep until the start of the next minute
-          now     = Time.now
-          sleep_s = 60 - now.sec
-          sleep(sleep_s)
+            # Sleep until the start of the next minute
+            now     = Time.now
+            sleep_s = 60 - now.sec
+            sleep(sleep_s)
+          rescue => e
+            Clacky::Logger.error("scheduler_tick_error", error: e)
+            sleep(5) # back off before retrying next tick
+          end
         end
-      rescue => e
-        Clacky::Logger.error("scheduler_fatal_error", error: e)
       end
 
       # Check all enabled schedules against the given time and fire matching ones.
