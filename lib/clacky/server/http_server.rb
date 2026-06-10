@@ -4141,8 +4141,16 @@ module Clacky
 
         api_key = body["api_key"].to_s
         if api_key.include?("****")
-          idx = body["index"]&.to_i || @agent_config.current_model_index
-          api_key = @agent_config.models.dig(idx, "api_key").to_s
+          model_id = body["id"].to_s
+          entry = nil
+          if !model_id.empty?
+            entry = @agent_config.models.find { |m| m["id"] == model_id }
+          end
+          if entry.nil? && body.key?("index")
+            entry = @agent_config.models[body["index"].to_i]
+          end
+          entry ||= @agent_config.models[@agent_config.current_model_index]
+          api_key = entry ? entry["api_key"].to_s : ""
         end
 
         model            = body["model"].to_s
